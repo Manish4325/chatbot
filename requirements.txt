@@ -2,3 +2,5 @@ openai
 streamlit>=1.32.0
 groq>=0.9.0
 PyPDF2
+faiss-cpu
+numpy
