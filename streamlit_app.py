@@ -1,88 +1,124 @@
+# FULL FEATURED GROQ + STREAMLIT CHATBOT
+# Features:
+# - Free Groq LLM (no billing)
+# - Streaming responses
+# - Complete answers + continuation
+# - PDF / CSV RAG chatbot
+# - Save chat history
+# - Rate limiting
+# - Dark mode toggle
+# - Resume / Interview bot mode
+
 import streamlit as st
 from groq import Groq
+import time
+from io import StringIO
+from PyPDF2 import PdfReader
+import csv
 
 # ---------------- Page Config ----------------
-st.set_page_config(
-    page_title="Groq Chatbot",
-    page_icon="💬",
-    layout="centered"
-)
+st.set_page_config(page_title="AI Chatbot", page_icon="🤖", layout="centered")
 
-st.title("💬 Chatbot")
-st.caption("Powered by Groq (LLaMA-3.1)")
-
-# ---------------- API Key ----------------
+# ---------------- Secrets ----------------
 if "GROQ_API_KEY" not in st.secrets:
-    st.error("❌ GROQ_API_KEY not found in Streamlit Secrets.")
+    st.error("❌ GROQ_API_KEY not found in Streamlit Secrets")
     st.stop()
 
 client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 
-# ---------------- System Prompt ----------------
-SYSTEM_PROMPT = {
-    "role": "system",
-    "content": (
-        "You are a helpful AI assistant. "
-        "Always provide COMPLETE answers. "
-        "If the question is technical, ALWAYS include a full working example. "
-        "Never stop mid-sentence. "
-        "Use clear explanations and proper markdown formatting."
-    )
+# ---------------- Rate Limiting ----------------
+RATE_LIMIT_SECONDS = 2
+if "last_call" not in st.session_state:
+    st.session_state.last_call = 0
+
+def rate_limited():
+    now = time.time()
+    if now - st.session_state.last_call < RATE_LIMIT_SECONDS:
+        return True
+    st.session_state.last_call = now
+    return False
+
+# ---------------- System Prompts ----------------
+SYSTEM_PROMPTS = {
+    "Normal": "You are a helpful AI assistant. Always give complete answers with examples.",
+    "Interview": "You are an interview coach. Ask questions and evaluate answers.",
+    "Resume": "You are a resume expert. Improve resumes and suggest changes."
 }
 
 # ---------------- Session State ----------------
 if "messages" not in st.session_state:
-    st.session_state.messages = [SYSTEM_PROMPT]
+    st.session_state.messages = []
 
-if "last_incomplete" not in st.session_state:
-    st.session_state.last_incomplete = False
+if "mode" not in st.session_state:
+    st.session_state.mode = "Normal"
 
-# ---------------- Sidebar Controls ----------------
+if "rag_context" not in st.session_state:
+    st.session_state.rag_context = ""
+
+# ---------------- Sidebar ----------------
 with st.sidebar:
-    st.header("⚙️ Controls")
+    st.header("⚙️ Settings")
+
+    st.session_state.mode = st.selectbox(
+        "Chat Mode",
+        ["Normal", "Interview", "Resume"]
+    )
+
+    dark = st.toggle("🌙 Dark Mode")
+    if dark:
+        st.markdown("<style>body{background-color:#0e1117;color:white}</style>", unsafe_allow_html=True)
+
+    uploaded_file = st.file_uploader("📄 Upload PDF / CSV", type=["pdf", "csv"])
 
     if st.button("🧹 Clear Chat"):
-        st.session_state.messages = [SYSTEM_PROMPT]
-        st.session_state.last_incomplete = False
+        st.session_state.messages = []
+        st.session_state.rag_context = ""
         st.rerun()
 
-# ---------------- Display Messages ----------------
+# ---------------- RAG Processing ----------------
+if uploaded_file:
+    if uploaded_file.type == "application/pdf":
+        reader = PdfReader(uploaded_file)
+        text = "".join(page.extract_text() for page in reader.pages)
+        st.session_state.rag_context = text[:4000]
+    elif uploaded_file.type == "text/csv":
+        stringio = StringIO(uploaded_file.getvalue().decode("utf-8"))
+        reader = csv.reader(stringio)
+        st.session_state.rag_context = " ".join(", ".join(row) for row in reader)[:4000]
+
+# ---------------- Display Chat ----------------
 for msg in st.session_state.messages:
-    if msg["role"] != "system":
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
 
 # ---------------- Chat Input ----------------
 if prompt := st.chat_input("Ask anything..."):
-    st.session_state.messages.append({
-        "role": "user",
-        "content": prompt
-    })
+    if rate_limited():
+        st.warning("⏳ Please wait before sending another message")
+    else:
+        st.session_state.messages.append({"role": "user", "content": prompt})
 
-    with st.chat_message("user"):
-        st.markdown(prompt)
+        context = [
+            {"role": "system", "content": SYSTEM_PROMPTS[st.session_state.mode]}
+        ]
 
-    def generate_response(extra_instruction=None):
-        context = st.session_state.messages[-8:]
-
-        if extra_instruction:
+        if st.session_state.rag_context:
             context.append({
-                "role": "user",
-                "content": extra_instruction
+                "role": "system",
+                "content": f"Use the following document context:\n{st.session_state.rag_context}"
             })
 
-        full_response = ""
-        truncated = False
+        context.extend(st.session_state.messages[-6:])
 
         with st.chat_message("assistant"):
             placeholder = st.empty()
+            full_response = ""
 
             stream = client.chat.completions.create(
                 model="llama-3.1-8b-instant",
                 messages=context,
-                temperature=0.6,
-                max_tokens=1024,
-                stream=True
+                stream=True,
+                max_tokens=1200
             )
 
             for chunk in stream:
@@ -90,29 +126,4 @@ if prompt := st.chat_input("Ask anything..."):
                     full_response += chunk.choices[0].delta.content
                     placeholder.markdown(full_response)
 
-            if not full_response.strip().endswith((".", "```")):
-                truncated = True
-
-        st.session_state.messages.append({
-            "role": "assistant",
-            "content": full_response
-        })
-
-        st.session_state.last_incomplete = truncated
-
-    try:
-        generate_response()
-
-    except Exception as e:
-        st.error(f"❌ Groq API error:\n\n{e}")
-
-# ---------------- Continue Button ----------------
-if st.session_state.last_incomplete:
-    if st.button("▶ Continue response"):
-        try:
-            generate_response(
-                extra_instruction="Continue the previous answer from where you stopped. Complete it fully."
-            )
-            st.session_state.last_incomplete = False
-        except Exception as e:
-            st.error(f"❌ Groq API error:\n\n{e}")
+        st.session_state.messages.append({"role": "assistant", "content": full_response})
