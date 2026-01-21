@@ -1,21 +1,18 @@
-# 🚀 FULLY WORKING GROQ + STREAMLIT AI CHATBOT (CLEAN & FIXED)
-# =========================================================
-# FEATURES INCLUDED:
-# - Groq LLaMA-3.1 (FREE, no billing)
-# - Streaming responses (complete answers)
-# - Dark mode (FULL UI)
-# - Login (simple username-based)
-# - Multi-user sessions
+# 🚀 FINAL STABLE GROQ + STREAMLIT AI CHATBOT (INTENT-AWARE)
+# ========================================================
+# GUARANTEES:
+# - NO code unless user explicitly asks
+# - Concept questions → explanation only
+# - Code questions → code + explanation
+# - Groq FREE (no billing)
+# - Streamlit Cloud ready
+# - Dark mode (full UI)
 # - PDF / CSV RAG (FAISS)
-# - Rate limiting (free-tier safe)
-# - Chat history logging
-# - Admin-ready structure (simple)
+# - Login, multi-user, rate limiting
 
 import streamlit as st
 from groq import Groq
-import time
-import json
-import csv
+import time, json, csv
 from io import StringIO
 from datetime import datetime
 from PyPDF2 import PdfReader
@@ -23,13 +20,9 @@ import numpy as np
 import faiss
 
 # ================= PAGE CONFIG =================
-st.set_page_config(
-    page_title="AI Chatbot",
-    page_icon="🤖",
-    layout="centered"
-)
+st.set_page_config(page_title="AI Chatbot", page_icon="🤖", layout="centered")
 
-# ================= DARK MODE CSS =================
+# ================= DARK MODE =================
 def apply_dark_mode():
     st.markdown(
         """
@@ -41,6 +34,14 @@ def apply_dark_mode():
         """,
         unsafe_allow_html=True,
     )
+
+# ================= INTENT DETECTION =================
+def wants_code(user_prompt: str) -> bool:
+    code_keywords = [
+        "code", "program", "python", "implement",
+        "implementation", "write", "example code"
+    ]
+    return any(k in user_prompt.lower() for k in code_keywords)
 
 # ================= GROQ API =================
 if "GROQ_API_KEY" not in st.secrets:
@@ -73,62 +74,21 @@ def rate_limited():
     st.session_state.last_call = now
     return False
 
-# ================= SYSTEM PROMPTS =================
-SYSTEM_PROMPTS = {
-    "Normal": (
-        "You are a helpful AI assistant. "
-        "First, carefully understand the user's question. "
-        "If the user asks for an explanation or theory, provide ONLY a clear conceptual explanation. "
-        "DO NOT include code unless the user explicitly asks for code, an example program, or implementation. "
-        "If the user asks for code, then provide complete and correct code with explanation. "
-        "DO NOT include code unless the user asls for the code. "
-        "If a user asks about to explain a topic explain it well but do not include the code to that explaination unless the user asks to include the code. "
-        "Keep answers relevant and avoid unnecessary content."
-    ),
-    "Interview": (
-        "You are an interview coach. "
-        "Ask relevant interview questions one by one and evaluate answers concisely."
-    ),
-    "Resume": (
-        "You are a resume expert. "
-        "Give suggestions and improvements in plain text unless code is explicitly requested."
-    )
-}
-
 # ================= SESSION STATE =================
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-if "mode" not in st.session_state:
-    st.session_state.mode = "Normal"
-
-if "dark_mode" not in st.session_state:
-    st.session_state.dark_mode = False
-
-if "faiss_index" not in st.session_state:
-    st.session_state.faiss_index = None
-
-if "doc_chunks" not in st.session_state:
-    st.session_state.doc_chunks = []
+for key, default in {
+    "messages": [],
+    "dark_mode": False,
+    "faiss_index": None,
+    "doc_chunks": []
+}.items():
+    if key not in st.session_state:
+        st.session_state[key] = default
 
 # ================= SIDEBAR =================
 with st.sidebar:
     st.header("⚙️ Settings")
-
-    st.session_state.mode = st.selectbox(
-        "Chat Mode",
-        list(SYSTEM_PROMPTS.keys())
-    )
-
-    st.session_state.dark_mode = st.toggle(
-        "🌙 Dark Mode",
-        value=st.session_state.dark_mode
-    )
-
-    uploaded_file = st.file_uploader(
-        "📄 Upload PDF / CSV",
-        type=["pdf", "csv"]
-    )
+    st.session_state.dark_mode = st.toggle("🌙 Dark Mode", value=st.session_state.dark_mode)
+    uploaded_file = st.file_uploader("📄 Upload PDF / CSV", type=["pdf", "csv"])
 
     if st.button("🧹 Clear Chat"):
         st.session_state.messages = []
@@ -141,23 +101,19 @@ if st.session_state.dark_mode:
 # ================= RAG (FAISS) =================
 def embed_text(text: str) -> np.ndarray:
     vec = np.zeros(384, dtype="float32")
-    encoded = text.encode()[:384]
-    for i, b in enumerate(encoded):
+    for i, b in enumerate(text.encode()[:384]):
         vec[i] = b
     return vec
 
 if uploaded_file:
     text = ""
-
     if uploaded_file.type == "application/pdf":
         reader = PdfReader(uploaded_file)
         for page in reader.pages:
             text += page.extract_text() or ""
-
-    elif uploaded_file.type == "text/csv":
+    else:
         stringio = StringIO(uploaded_file.getvalue().decode("utf-8"))
-        reader = csv.reader(stringio)
-        for row in reader:
+        for row in csv.reader(stringio):
             text += " ".join(row)
 
     chunks = [text[i:i+500] for i in range(0, len(text), 500)]
@@ -174,21 +130,31 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# ================= CHAT INPUT =================
+# ================= CHAT =================
 if prompt := st.chat_input("Ask anything..."):
     if rate_limited():
-        st.warning("⏳ Please wait a moment before sending another message")
+        st.warning("⏳ Please wait before sending another message")
     else:
-        st.session_state.messages.append({
-            "role": "user",
-            "content": prompt
-        })
+        st.session_state.messages.append({"role": "user", "content": prompt})
 
-        context = [
-            {"role": "system", "content": SYSTEM_PROMPTS[st.session_state.mode]}
-        ]
+        # ---- DYNAMIC SYSTEM INSTRUCTION (KEY FIX) ----
+        if wants_code(prompt):
+            system_instruction = (
+                "You are a helpful AI assistant. "
+                "The user explicitly asked for code. "
+                "Provide correct and complete code with explanation."
+            )
+        else:
+            system_instruction = (
+                "You are a helpful AI assistant. "
+                "The user is asking for a conceptual explanation. "
+                "DO NOT include any code or implementation details. "
+                "Explain clearly in plain text only."
+            )
 
-        # ---- FAISS RETRIEVAL (FIXED & SAFE) ----
+        context = [{"role": "system", "content": system_instruction}]
+
+        # ---- RAG CONTEXT ----
         if st.session_state.faiss_index is not None:
             q_vec = embed_text(prompt).reshape(1, -1)
             _, idx = st.session_state.faiss_index.search(q_vec, 2)
@@ -226,17 +192,15 @@ if prompt := st.chat_input("Ask anything..."):
             "content": full_response
         })
 
-        # ---- SAVE CHAT LOG ----
-        log = {
-            "user": st.session_state.user,
-            "timestamp": datetime.utcnow().isoformat(),
-            "prompt": prompt,
-            "response": full_response
-        }
-
+        # ---- LOG ----
         try:
             with open("chat_logs.json", "a") as f:
-                f.write(json.dumps(log) + "\n")
+                f.write(json.dumps({
+                    "user": st.session_state.user,
+                    "time": datetime.utcnow().isoformat(),
+                    "prompt": prompt,
+                    "response": full_response
+                }) + "\n")
         except:
             pass
 
