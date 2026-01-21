@@ -1,59 +1,60 @@
 import streamlit as st
-from openai import OpenAI
+from groq import Groq
 
-st.set_page_config(page_title="Chatbot", page_icon="💬")
+# Page config
+st.set_page_config(
+    page_title="Groq Chatbot",
+    page_icon="💬",
+    layout="centered"
+)
 
 st.title("💬 Chatbot")
-st.caption("Powered by OpenAI")
+st.caption("Powered by Groq (LLaMA-3)")
 
-# Load API key from Streamlit Secrets
-if "OPENAI_API_KEY" not in st.secrets:
-    st.error("❌ OpenAI API key not found. Add it in Streamlit Secrets.")
+# Load Groq API key from Streamlit Secrets
+if "GROQ_API_KEY" not in st.secrets:
+    st.error("❌ GROQ_API_KEY not found. Add it in Streamlit Secrets.")
     st.stop()
 
-client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 
-# Initialize session state
+# Initialize chat history
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Display chat history
+# Display previous messages
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
 # Chat input
-if prompt := st.chat_input("Ask something..."):
-    st.session_state.messages.append(
-        {"role": "user", "content": prompt}
-    )
+if prompt := st.chat_input("Ask anything..."):
+    # Save user message
+    st.session_state.messages.append({
+        "role": "user",
+        "content": prompt
+    })
 
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Convert messages to Responses API format
-    input_messages = [
-        {
-            "role": m["role"],
-            "content": [{"type": "text", "text": m["content"]}]
-        }
-        for m in st.session_state.messages
-    ]
-
     try:
-        response = client.responses.create(
-            model="gpt-4.1-mini",
-            input=input_messages
+        # Call Groq API
+        response = client.chat.completions.create(
+            model="llama3-8b-8192",  # FREE + FAST
+            messages=st.session_state.messages
         )
 
-        reply = response.output_text
+        assistant_reply = response.choices[0].message.content
 
         with st.chat_message("assistant"):
-            st.markdown(reply)
+            st.markdown(assistant_reply)
 
-        st.session_state.messages.append(
-            {"role": "assistant", "content": reply}
-        )
+        # Save assistant response
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": assistant_reply
+        })
 
     except Exception as e:
-        st.error("❌ Authentication failed. Check API key & billing.")
+        st.error("❌ Groq API error. Try again later.")
