@@ -75,9 +75,22 @@ def rate_limited():
 
 # ================= SYSTEM PROMPTS =================
 SYSTEM_PROMPTS = {
-    "Normal": "You are a helpful AI assistant. Always give complete answers with examples and full code.",
-    "Interview": "You are an interviewer. Ask questions and evaluate answers.",
-    "Resume": "You are a resume expert. Improve resumes professionally."
+    "Normal": (
+        "You are a helpful AI assistant. "
+        "First, carefully understand the user's question. "
+        "If the user asks for an explanation or theory, provide ONLY a clear conceptual explanation. "
+        "DO NOT include code unless the user explicitly asks for code, an example program, or implementation. "
+        "If the user asks for code, then provide complete and correct code with explanation. "
+        "Keep answers relevant and avoid unnecessary content."
+    ),
+    "Interview": (
+        "You are an interview coach. "
+        "Ask relevant interview questions one by one and evaluate answers concisely."
+    ),
+    "Resume": (
+        "You are a resume expert. "
+        "Give suggestions and improvements in plain text unless code is explicitly requested."
+    )
 }
 
 # ================= SESSION STATE =================
