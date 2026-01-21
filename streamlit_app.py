@@ -164,8 +164,11 @@ if prompt := st.chat_input("Ask anything..."):
         if st.session_state.faiss_index:
             q_vec = embed(prompt).astype("float32").reshape(1, -1)
             _, idx = st.session_state.faiss_index.search(q_vec, 2)
-            retrieved = "
+                        retrieved = "
 ".join(st.session_state.doc_chunks[i] for i in idx[0])
+            context.append({"role": "system", "content": f"Document context:
+{retrieved}"})
+
             context.append({"role": "system", "content": f"Document context:
 {retrieved}"})
 
