@@ -1,7 +1,6 @@
 import streamlit as st
 from groq import Groq
 
-# ---------------- Page Config ----------------
 st.set_page_config(
     page_title="Groq Chatbot",
     page_icon="💬",
@@ -9,27 +8,22 @@ st.set_page_config(
 )
 
 st.title("💬 Chatbot")
-st.caption("Powered by Groq (LLaMA-3)")
+st.caption("Powered by Groq (LLaMA-3.1)")
 
-# ---------------- Load API Key ----------------
 if "GROQ_API_KEY" not in st.secrets:
     st.error("❌ GROQ_API_KEY not found in Streamlit Secrets.")
     st.stop()
 
 client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 
-# ---------------- Session State ----------------
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# ---------------- Display Messages ----------------
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# ---------------- Chat Input ----------------
 if prompt := st.chat_input("Ask anything..."):
-    # Save user message
     st.session_state.messages.append({
         "role": "user",
         "content": prompt
@@ -39,11 +33,10 @@ if prompt := st.chat_input("Ask anything..."):
         st.markdown(prompt)
 
     try:
-        # 🔒 Limit history to avoid free-tier errors
         limited_messages = st.session_state.messages[-6:]
 
         response = client.chat.completions.create(
-            model="llama3-8b-8192",  # safest free-tier model
+            model="llama-3.1-8b-instant",  # ✅ FIXED MODEL
             messages=limited_messages,
             temperature=0.7,
             max_tokens=512
@@ -60,5 +53,4 @@ if prompt := st.chat_input("Ask anything..."):
         })
 
     except Exception as e:
-        # Show real error (VERY IMPORTANT)
         st.error(f"❌ Groq API error:\n\n{e}")
