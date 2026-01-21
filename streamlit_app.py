@@ -81,6 +81,8 @@ SYSTEM_PROMPTS = {
         "If the user asks for an explanation or theory, provide ONLY a clear conceptual explanation. "
         "DO NOT include code unless the user explicitly asks for code, an example program, or implementation. "
         "If the user asks for code, then provide complete and correct code with explanation. "
+        "DO NOT include code unless the user asls for the code. "
+        "If a user asks about to explain a topic explain it well but do not include the code to that explaination unless the user asks to include the code. "
         "Keep answers relevant and avoid unnecessary content."
     ),
     "Interview": (
