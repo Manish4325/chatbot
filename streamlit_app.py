@@ -1,23 +1,19 @@
 import streamlit as st
 from openai import OpenAI
 
-# Page config
 st.set_page_config(page_title="Chatbot", page_icon="💬")
 
 st.title("💬 Chatbot")
-st.write("A simple Streamlit chatbot using OpenAI Responses API")
+st.caption("Powered by OpenAI")
 
-# API Key input
-openai_api_key = st.text_input("OpenAI API Key", type="password")
-
-if not openai_api_key:
-    st.info("Please enter your OpenAI API key to continue 🔑")
+# Load API key from Streamlit Secrets
+if "OPENAI_API_KEY" not in st.secrets:
+    st.error("❌ OpenAI API key not found. Add it in Streamlit Secrets.")
     st.stop()
 
-# Create OpenAI client
-client = OpenAI(api_key=openai_api_key)
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
-# Session state for messages
+# Initialize session state
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -26,10 +22,8 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# User input
+# Chat input
 if prompt := st.chat_input("Ask something..."):
-
-    # Store user message
     st.session_state.messages.append(
         {"role": "user", "content": prompt}
     )
@@ -37,27 +31,29 @@ if prompt := st.chat_input("Ask something..."):
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Prepare conversation for API
-    conversation = []
-    for m in st.session_state.messages:
-        conversation.append({
+    # Convert messages to Responses API format
+    input_messages = [
+        {
             "role": m["role"],
             "content": [{"type": "text", "text": m["content"]}]
-        })
+        }
+        for m in st.session_state.messages
+    ]
 
-    # Call OpenAI Responses API
-    response = client.responses.create(
-        model="gpt-4.1-mini",
-        input=conversation
-    )
+    try:
+        response = client.responses.create(
+            model="gpt-4.1-mini",
+            input=input_messages
+        )
 
-    assistant_reply = response.output_text
+        reply = response.output_text
 
-    # Display assistant response
-    with st.chat_message("assistant"):
-        st.markdown(assistant_reply)
+        with st.chat_message("assistant"):
+            st.markdown(reply)
 
-    # Save assistant response
-    st.session_state.messages.append(
-        {"role": "assistant", "content": assistant_reply}
-    )
+        st.session_state.messages.append(
+            {"role": "assistant", "content": reply}
+        )
+
+    except Exception as e:
+        st.error("❌ Authentication failed. Check API key & billing.")
