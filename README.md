@@ -1,19 +1,20 @@
-# 💬 Chatbot template
+# 🤖 ChatGPT-like AI Chatbot
 
-A simple Streamlit app that shows how to build a chatbot using OpenAI's GPT-3.5.
+A full-stack AI chatbot inspired by ChatGPT.
 
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://chatbot-template.streamlit.app/)
+## Tech Stack
+- Frontend: Next.js (React)
+- Backend: FastAPI
+- LLM: Groq (LLaMA 3.1)
+- Streaming responses
 
-### How to run it on your own machine
+## Structure
+- `streamlit_app.py` – legacy demo
+- `backend/` – FastAPI API
+- `frontend/` – ChatGPT-style UI
 
-1. Install the requirements
-
-   ```
-   $ pip install -r requirements.txt
-   ```
-
-2. Run the app
-
-   ```
-   $ streamlit run streamlit_app.py
-   ```
+## Features
+- Streaming chat
+- No code unless explicitly asked
+- Dark / light UI ready
+- GitHub-first workflow
