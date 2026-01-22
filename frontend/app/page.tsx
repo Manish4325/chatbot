@@ -2,54 +2,74 @@
 
 import { useState } from "react";
 
+type Message = {
+  role: "user" | "assistant";
+  content: string;
+};
+
 export default function Home() {
-  const [messages, setMessages] = useState<any[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
 
-  async function send() {
-    const userMsg = { role: "user", content: input };
-    setMessages(prev => [...prev, userMsg]);
+  async function sendMessage() {
+    if (!input.trim()) return;
 
-    const res = await fetch("https://chatbot-jo3e.onrender.com", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        prompt: input,
-        messages
-      })
-    });
+    const newMessages = [...messages, { role: "user", content: input }];
+    setMessages(newMessages);
+    setInput("");
 
-    const reader = res.body!.getReader();
-    let text = "";
+    const response = await fetch(
+      "https://YOUR-BACKEND-URL/chat",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          prompt: input,
+          messages: newMessages,
+        }),
+      }
+    );
+
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+    let assistantText = "";
+
+    if (!reader) return;
 
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
-      text += new TextDecoder().decode(value);
-      setMessages(prev => [
-        ...prev.slice(0, -1),
-        { role: "assistant", content: text }
+
+      assistantText += decoder.decode(value);
+      setMessages([
+        ...newMessages,
+        { role: "assistant", content: assistantText },
       ]);
     }
-
-    setInput("");
   }
 
   return (
-    <main style={{ maxWidth: 800, margin: "auto", padding: 24 }}>
+    <main style={{ maxWidth: 800, margin: "40px auto", fontFamily: "Arial" }}>
       {messages.map((m, i) => (
-        <div key={i} style={{ marginBottom: 12 }}>
-          <b>{m.role === "user" ? "You" : "Assistant"}:</b>
+        <div key={i} style={{ marginBottom: 16 }}>
+          <strong>{m.role === "user" ? "You" : "Assistant"}:</strong>
           <div>{m.content}</div>
         </div>
       ))}
 
       <input
         value={input}
-        onChange={e => setInput(e.target.value)}
-        onKeyDown={e => e.key === "Enter" && send()}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && sendMessage()}
         placeholder="Ask anything..."
-        style={{ width: "100%", padding: 12 }}
+        style={{
+          width: "100%",
+          padding: 12,
+          fontSize: 16,
+          marginTop: 20,
+        }}
       />
     </main>
   );
