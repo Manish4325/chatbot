@@ -1,12 +1,4 @@
-# 🚀 CHATGPT‑LIKE GROQ + STREAMLIT CHATBOT (FINAL UI MATCH)
-# =======================================================
-# GOAL:
-# Make the Streamlit chatbot UI look & feel CLOSE to ChatGPT
-# – clean white/light theme
-# – subtle dark mode
-# – centered chat
-# – readable text & code
-# – minimal sidebar
+# 🚀 CHATGPT-LIKE GROQ + STREAMLIT CHATBOT (STABLE VERSION)
 
 import streamlit as st
 from groq import Groq
@@ -24,7 +16,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# ================= CHATGPT‑LIKE CSS =================
+# ================= CHATGPT-LIKE CSS =================
 def apply_chatgpt_style(dark=False):
     if dark:
         bg = "#0f1117"
@@ -41,35 +33,41 @@ def apply_chatgpt_style(dark=False):
     <style>
     body, .stApp {{ background:{bg}; color:{text}; }}
 
-    /* Center chat */
-    .block-container {{ max-width: 900px; padding-top: 2rem; }}
+    .block-container {{
+        max-width: 900px;
+        padding-top: 2rem;
+    }}
 
-    /* Chat bubbles */
     .stChatMessage {{
         background: {chat_bg};
-        border-radius: 12px;
-        padding: 12px;
-        margin-bottom: 10px;
+        border-radius: 14px;
+        padding: 14px;
+        margin-bottom: 12px;
     }}
 
-    /* Text */
-    .stMarkdown p {{ font-size: 16px; line-height: 1.6; }}
-
-    /* Code */
-    pre, code {{
-        background: {code_bg};
+    .stMarkdown p {{
+        font-size: 16px;
+        line-height: 1.65;
         color: {text};
-        border-radius: 8px;
-        font-size: 14px;
     }}
 
-    /* Input */
+    pre {{
+        background: {code_bg} !important;
+        padding: 14px !important;
+        border-radius: 10px;
+        font-size: 14px;
+        overflow-x: auto;
+    }}
+
+    code {{
+        color: {text};
+    }}
+
     textarea, input {{
         border-radius: 12px !important;
         font-size: 16px;
     }}
 
-    /* Sidebar */
     section[data-testid="stSidebar"] {{
         background: {chat_bg};
     }}
@@ -80,13 +78,14 @@ def apply_chatgpt_style(dark=False):
 if "GROQ_API_KEY" not in st.secrets:
     st.error("❌ GROQ_API_KEY missing")
     st.stop()
+
 client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 
-# ================= INTENT =================
-def wants_code(prompt: str, allow_code: bool) -> bool:
+# ================= HELPERS =================
+def user_wants_code(prompt: str, allow_code: bool) -> bool:
     if allow_code:
         return True
-    keywords = ["code", "program", "python", "implement", "write"]
+    keywords = ["code", "program", "python", "implement", "write", "algorithm"]
     return any(k in prompt.lower() for k in keywords)
 
 # ================= LOGIN =================
@@ -95,7 +94,7 @@ if "user" not in st.session_state:
 
 if not st.session_state.user:
     st.title("💬 Chatbot")
-    st.caption("ChatGPT‑style UI powered by Groq")
+    st.caption("ChatGPT-style UI powered by Groq")
     username = st.text_input("Enter your name")
     if st.button("Start Chat") and username:
         st.session_state.user = username
@@ -103,14 +102,14 @@ if not st.session_state.user:
     st.stop()
 
 # ================= STATE =================
-for k, v in {
-    "messages": [],
-    "dark": False,
-    "faiss": None,
-    "chunks": []
-}.items():
-    if k not in st.session_state:
-        st.session_state[k] = v
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "dark" not in st.session_state:
+    st.session_state.dark = False
+if "faiss" not in st.session_state:
+    st.session_state.faiss = None
+if "chunks" not in st.session_state:
+    st.session_state.chunks = []
 
 # ================= SIDEBAR =================
 with st.sidebar:
@@ -126,10 +125,9 @@ with st.sidebar:
         st.session_state.messages = []
         st.rerun()
 
-# ================= APPLY STYLE =================
 apply_chatgpt_style(st.session_state.dark)
 
-# ================= RAG =================
+# ================= SIMPLE RAG =================
 def embed(text):
     v = np.zeros(384, dtype="float32")
     for i, b in enumerate(text.encode()[:384]):
@@ -139,8 +137,8 @@ def embed(text):
 if uploaded:
     content = ""
     if uploaded.type == "application/pdf":
-        r = PdfReader(uploaded)
-        for p in r.pages:
+        reader = PdfReader(uploaded)
+        for p in reader.pages:
             content += p.extract_text() or ""
     else:
         sio = StringIO(uploaded.getvalue().decode("utf-8"))
@@ -148,67 +146,88 @@ if uploaded:
             content += " ".join(row)
 
     chunks = [content[i:i+500] for i in range(0, len(content), 500)]
-    vecs = np.array([embed(c) for c in chunks])
-    idx = faiss.IndexFlatL2(384)
-    idx.add(vecs)
-    st.session_state.faiss = idx
+    vectors = np.array([embed(c) for c in chunks])
+
+    index = faiss.IndexFlatL2(384)
+    index.add(vectors)
+
+    st.session_state.faiss = index
     st.session_state.chunks = chunks
 
-# ================= CHAT =================
-for m in st.session_state.messages:
-    with st.chat_message(m["role"]):
-        st.markdown(m["content"])
+# ================= CHAT DISPLAY =================
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
 
+# ================= CHAT INPUT =================
 if prompt := st.chat_input("Ask anything..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
 
     length_rule = {
-        "Short": "Answer briefly.",
-        "Medium": "Give a clear explanation.",
-        "Long": "Give a detailed explanation."
+        "Short": "Answer briefly in a few lines.",
+        "Medium": "Give a clear explanation with examples if needed.",
+        "Long": "Give a detailed explanation step by step."
     }[length]
 
     style_rule = {
-        "ChatGPT": "Use friendly, conversational tone.",
+        "ChatGPT": "Use a friendly, conversational tone.",
         "Textbook": "Use structured academic explanation.",
-        "Interview": "Answer concisely in 2–3 lines."
+        "Interview": "Answer concisely like in an interview."
     }[style]
 
-    code_rule = "Include code." if wants_code(prompt, allow_code) else "Do NOT include code."
+    wants_code = user_wants_code(prompt, allow_code)
 
-    system = f"You are a helpful AI assistant. {length_rule} {style_rule} {code_rule}"
+    if wants_code:
+        code_rule = (
+            "If code is needed, first explain clearly, "
+            "then provide the code in a separate section titled 'Code'."
+        )
+    else:
+        code_rule = (
+            "Do NOT include any code, code snippets, or pseudo-code. "
+            "Only provide explanation in plain text."
+        )
 
-    context = [{"role": "system", "content": system}]
+    system_prompt = f"""
+You are a helpful AI assistant.
+{length_rule}
+{style_rule}
+{code_rule}
+"""
+
+    messages = [{"role": "system", "content": system_prompt}]
 
     if st.session_state.faiss:
         q = embed(prompt).reshape(1, -1)
-        _, i = st.session_state.faiss.search(q, 2)
-        ctx = "\n".join(st.session_state.chunks[j] for j in i[0])
-        context.append({"role": "system", "content": f"Context:\n{ctx}"})
+        _, idx = st.session_state.faiss.search(q, 2)
+        ctx = "\n".join(st.session_state.chunks[i] for i in idx[0])
+        messages.append({"role": "system", "content": f"Context:\n{ctx}"})
 
-    context.extend(st.session_state.messages[-6:])
+    messages.extend(st.session_state.messages[-6:])
 
     with st.chat_message("assistant"):
-        out = ""
-        box = st.empty()
+        output = ""
+        placeholder = st.empty()
+
         stream = client.chat.completions.create(
             model="llama-3.1-8b-instant",
-            messages=context,
+            messages=messages,
             stream=True
         )
-        for c in stream:
-            if c.choices[0].delta.content:
-                out += c.choices[0].delta.content
-                box.markdown(out)
 
-    st.session_state.messages.append({"role": "assistant", "content": out})
+        for chunk in stream:
+            if chunk.choices[0].delta.content:
+                output += chunk.choices[0].delta.content
+                placeholder.markdown(output)
+
+    st.session_state.messages.append({"role": "assistant", "content": output})
 
     try:
         with open("chat_logs.json", "a") as f:
             f.write(json.dumps({
                 "user": st.session_state.user,
                 "prompt": prompt,
-                "response": out,
+                "response": output,
                 "time": datetime.utcnow().isoformat()
             }) + "\n")
     except:
