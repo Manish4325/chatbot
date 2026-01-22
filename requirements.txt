@@ -9,5 +9,4 @@ pandas
 python-docx
 openpyxl
 beautifulsoup4
-pytesseract
 Pillow
