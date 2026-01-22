@@ -19,7 +19,7 @@ export default function Home() {
     setInput("");
 
     const response = await fetch(
-      "https://YOUR-BACKEND-URL/chat",
+      "https://chatbot-jo3e.onrender.com/chat",
       {
         method: "POST",
         headers: {
