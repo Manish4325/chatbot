@@ -1,16 +1,14 @@
-# 🚀 CHATGPT-LIKE GROQ + STREAMLIT CHATBOT (STREAMLIT-CLOUD SAFE)
+# 🚀 CHATGPT-LIKE GROQ + STREAMLIT CHATBOT (FINAL, STREAMLIT-CLOUD SAFE)
 
 import streamlit as st
 from groq import Groq
 import json, os
 import numpy as np
 import pandas as pd
-from io import StringIO
 from datetime import datetime
 from PyPDF2 import PdfReader
 from docx import Document
 from bs4 import BeautifulSoup
-from PIL import Image
 import faiss
 
 # ================= CONFIG =================
@@ -38,7 +36,7 @@ def load_chats(user):
 def save_chats(user, chats):
     json.dump(chats, open(user_file(user), "w"), indent=2)
 
-# 🔧 Normalize old chat format
+# Normalize old chat format (important)
 def normalize_chats(chats):
     normalized = {}
     for title, data in chats.items():
@@ -85,15 +83,12 @@ def extract_text(file):
         if ext in ["py", "ipynb", "txt"]:
             return file.read().decode("utf-8")
 
+        # ✅ Image handling (NO OCR, natural behavior)
         if ext in ["png", "jpg", "jpeg"]:
-            return (
-                "[Image uploaded]\n"
-                "OCR is disabled on Streamlit Cloud.\n"
-                "Please describe the image or upload a text-based file."
-            )
+            return "[Image uploaded but text could not be extracted]"
 
-    except Exception as e:
-        return f"[Could not read file: {e}]"
+    except Exception:
+        return ""
 
     return ""
 
@@ -151,7 +146,7 @@ for k, v in {
 # ================= SIDEBAR =================
 with st.sidebar:
     st.subheader("💬 Chats")
-    search = st.text_input("🔍 Search")
+    search = st.text_input("🔍 Search chats")
 
     for title, meta in st.session_state.chats.items():
         if search.lower() in title.lower():
@@ -217,7 +212,13 @@ if prompt := st.chat_input("Ask anything..."):
         else "Do NOT include code."
     )
 
-    system = f"You are a helpful assistant. {code_rule}"
+    # ✅ Natural system prompt
+    system = (
+        "You are a helpful, conversational assistant. "
+        "If an image is uploaded and its text is unavailable, "
+        "politely ask the user to describe the image instead of explaining technical limitations. "
+        + code_rule
+    )
 
     context = [{"role": "system", "content": system}] + messages[-6:]
 
