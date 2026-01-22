@@ -52,7 +52,7 @@ export default function Home() {
       ]);
     }
   }
-
+ 
   return (
     <main style={{ maxWidth: 800, margin: "40px auto", fontFamily: "Arial" }}>
       {messages.map((m, i) => (
