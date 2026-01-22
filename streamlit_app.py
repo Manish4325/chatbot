@@ -1,8 +1,8 @@
-# 🚀 CHATGPT-LIKE GROQ + STREAMLIT CHATBOT (FINAL, STABLE)
+# 🚀 CHATGPT-LIKE GROQ + STREAMLIT CHATBOT (STREAMLIT-CLOUD SAFE)
 
 import streamlit as st
 from groq import Groq
-import json, os, csv
+import json, os
 import numpy as np
 import pandas as pd
 from io import StringIO
@@ -11,7 +11,6 @@ from PyPDF2 import PdfReader
 from docx import Document
 from bs4 import BeautifulSoup
 from PIL import Image
-import pytesseract
 import faiss
 
 # ================= CONFIG =================
@@ -39,11 +38,11 @@ def load_chats(user):
 def save_chats(user, chats):
     json.dump(chats, open(user_file(user), "w"), indent=2)
 
-# 🔧 FIX: normalize old chat format
+# 🔧 Normalize old chat format
 def normalize_chats(chats):
     normalized = {}
     for title, data in chats.items():
-        if isinstance(data, list):  # old format
+        if isinstance(data, list):
             normalized[title] = {
                 "pinned": False,
                 "created": datetime.utcnow().isoformat(),
@@ -64,30 +63,37 @@ def embed(text):
 def extract_text(file):
     ext = file.name.split(".")[-1].lower()
 
-    if ext == "pdf":
-        reader = PdfReader(file)
-        return " ".join(p.extract_text() or "" for p in reader.pages)
+    try:
+        if ext == "pdf":
+            reader = PdfReader(file)
+            return " ".join(p.extract_text() or "" for p in reader.pages)
 
-    if ext == "docx":
-        doc = Document(file)
-        return " ".join(p.text for p in doc.paragraphs)
+        if ext == "docx":
+            doc = Document(file)
+            return " ".join(p.text for p in doc.paragraphs)
 
-    if ext == "csv":
-        return pd.read_csv(file).to_string()
+        if ext == "csv":
+            return pd.read_csv(file).to_string()
 
-    if ext in ["xlsx", "xls"]:
-        return pd.read_excel(file).to_string()
+        if ext in ["xlsx", "xls"]:
+            return pd.read_excel(file).to_string()
 
-    if ext == "html":
-        soup = BeautifulSoup(file.read(), "html.parser")
-        return soup.get_text()
+        if ext == "html":
+            soup = BeautifulSoup(file.read(), "html.parser")
+            return soup.get_text()
 
-    if ext in ["py", "ipynb"]:
-        return file.read().decode("utf-8")
+        if ext in ["py", "ipynb", "txt"]:
+            return file.read().decode("utf-8")
 
-    if ext in ["png", "jpg", "jpeg"]:
-        img = Image.open(file)
-        return pytesseract.image_to_string(img)
+        if ext in ["png", "jpg", "jpeg"]:
+            return (
+                "[Image uploaded]\n"
+                "OCR is disabled on Streamlit Cloud.\n"
+                "Please describe the image or upload a text-based file."
+            )
+
+    except Exception as e:
+        return f"[Could not read file: {e}]"
 
     return ""
 
@@ -119,7 +125,6 @@ if not st.session_state.user:
     u = st.text_input("Enter your name")
     if st.button("Start Chat") and u:
         st.session_state.user = u
-
         raw = load_chats(u)
         st.session_state.chats = normalize_chats(raw)
         save_chats(u, st.session_state.chats)
@@ -150,7 +155,7 @@ with st.sidebar:
 
     for title, meta in st.session_state.chats.items():
         if search.lower() in title.lower():
-            icon = "⭐ " if isinstance(meta, dict) and meta.get("pinned") else ""
+            icon = "⭐ " if meta.get("pinned") else ""
             if st.button(icon + title, use_container_width=True):
                 st.session_state.current = title
                 st.rerun()
@@ -165,7 +170,7 @@ with st.sidebar:
 
     uploaded = st.file_uploader(
         "Upload files",
-        type=["pdf","docx","csv","xlsx","html","py","ipynb","png","jpg","jpeg"],
+        type=["pdf","docx","csv","xlsx","html","py","ipynb","txt","png","jpg","jpeg"],
         accept_multiple_files=True
     )
 
@@ -191,7 +196,7 @@ if st.session_state.current:
         with st.chat_message(m["role"]):
             st.markdown(m["content"])
 
-# ================= CHAT INPUT =================
+# ================= CHAT =================
 if prompt := st.chat_input("Ask anything..."):
 
     if not st.session_state.current:
