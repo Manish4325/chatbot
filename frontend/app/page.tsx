@@ -21,13 +21,16 @@ export default function Home() {
     setLoading(true);
 
     const response = await fetch(
-      "https://chatbot-jo3e.onrender.com/chat",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMessage.content }),
-      }
-    );
+  "https://chatbot-jo3e.onrender.com/chat",
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ message: userMessage.content }),
+  }
+);
+
 
     const reader = response.body?.getReader();
     const decoder = new TextDecoder();
