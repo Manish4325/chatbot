@@ -22,6 +22,7 @@ app.add_middleware(
 )
 
 @app.post("/chat")
+@app.post("/chat/")
 def chat(req: ChatRequest):
     return StreamingResponse(
         stream_groq(req),
