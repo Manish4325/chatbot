@@ -15,77 +15,79 @@ export default function Home() {
   const sendMessage = async () => {
     if (!input.trim()) return;
 
-    const userMessage: Message = { role: "user", content: input };
-    setMessages(prev => [...prev, userMessage]);
+    const userMessage: Message = {
+      role: "user",
+      content: input,
+    };
+
+    // 1️⃣ Add user message immediately
+    setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setLoading(true);
 
-    const response = await fetch(
-  "https://chatbot-jo3e.onrender.com/chat",
-  {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ message: userMessage.content }),
-  }
-);
+    try {
+      // 2️⃣ Call backend
+      const res = await fetch(
+        "https://chatbot-jo3e.onrender.com/chat",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ message: userMessage.content }),
+        }
+      );
 
+      if (!res.ok) {
+        throw new Error("Backend error");
+      }
 
-    const reader = response.body?.getReader();
-    const decoder = new TextDecoder();
+      // 3️⃣ Parse JSON response
+      const data = await res.json();
 
-    let assistantText = "";
-    setMessages(prev => [...prev, { role: "assistant", content: "" }]);
+      const assistantMessage: Message = {
+        role: "assistant",
+        content: data.response,
+      };
 
-    while (true) {
-      const { value, done } = await reader!.read();
-      if (done) break;
-
-      assistantText += decoder.decode(value);
-      setMessages(prev => {
-        const updated = [...prev];
-        updated[updated.length - 1] = {
+      // 4️⃣ Add assistant message
+      setMessages((prev) => [...prev, assistantMessage]);
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        {
           role: "assistant",
-          content: assistantText,
-        };
-        return updated;
-      });
+          content: "❌ Error contacting server.",
+        },
+      ]);
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
-  };
-
-  const toggleDark = () => {
-    document.documentElement.classList.toggle("dark");
   };
 
   return (
-    <main className="container">
-      <header>
-        <h1>Chatbot</h1>
-        <button onClick={toggleDark}>🌙 Dark Mode</button>
-      </header>
+    <main style={{ maxWidth: 800, margin: "40px auto", padding: 20 }}>
+      {messages.map((msg, i) => (
+        <div key={i} style={{ marginBottom: 12 }}>
+          <b>{msg.role === "user" ? "You" : "Assistant"}:</b>
+          <div>{msg.content}</div>
+        </div>
+      ))}
 
-      <div className="chat">
-        {messages.map((msg, i) => (
-          <div key={i} className={`message ${msg.role}`}>
-            {msg.content}
-          </div>
-        ))}
-      </div>
+      {loading && <div><i>Assistant is typing...</i></div>}
 
-      <div className="input-box">
-        <input
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          placeholder="Ask anything..."
-          onKeyDown={e => e.key === "Enter" && sendMessage()}
-        />
-        <button onClick={sendMessage} disabled={loading}>
-          Send
-        </button>
-      </div>
+      <input
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+        placeholder="Ask anything..."
+        style={{
+          width: "100%",
+          padding: 12,
+          marginTop: 20,
+          border: "2px solid black",
+        }}
+      />
     </main>
   );
 }
