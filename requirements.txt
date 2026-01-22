@@ -5,3 +5,9 @@ PyPDF2
 faiss-cpu
 numpy
 reportlab
+pandas
+python-docx
+openpyxl
+beautifulsoup4
+pytesseract
+Pillow
