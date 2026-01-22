@@ -25,8 +25,8 @@ app.add_middleware(
 @app.post("/chat/")
 def chat(req: ChatRequest):
     return StreamingResponse(
-        stream_groq(req),
-        media_type="text/event-stream"
+        stream_groq(req.message),
+        media_type="text/plain"
     )
 
 @app.get("/")
