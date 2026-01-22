@@ -22,18 +22,18 @@ export default function Home() {
     setInput("");
 
     const response = await fetch(
-      "https://chatbot-jo3e.onrender.com/chat",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          prompt: input,
-          messages: newMessages,
-        }),
-      }
-    );
+  "https://chatbot-jo3e.onrender.com/chat",
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      prompt: input,
+      messages: newMessages,
+    }),
+  }
+);
 
     const reader = response.body?.getReader();
     const decoder = new TextDecoder();
