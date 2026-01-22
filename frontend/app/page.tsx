@@ -10,7 +10,7 @@ export default function Home() {
     const userMsg = { role: "user", content: input };
     setMessages(prev => [...prev, userMsg]);
 
-    const res = await fetch("https://YOUR-BACKEND-URL/chat", {
+    const res = await fetch("https://chatbot-jo3e.onrender.com", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
