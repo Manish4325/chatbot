@@ -26,27 +26,32 @@ def apply_chatgpt_style(dark=False):
         bg = "#0f1117"
         chat_bg = "#1e1f24"
         text = "#eaeaea"
+        subtext = "#c9c9c9"
         code_bg = "#0b0f14"
         border = "#2a2b30"
     else:
         bg = "#ffffff"
         chat_bg = "#f7f7f8"
         text = "#1f1f1f"
+        subtext = "#4a4a4a"
         code_bg = "#f1f1f1"
         border = "#dddddd"
 
     st.markdown(f"""
     <style>
+    /* App background */
     body, .stApp {{
         background: {bg};
         color: {text};
     }}
 
+    /* Center content */
     .block-container {{
         max-width: 900px;
         padding-top: 2rem;
     }}
 
+    /* Chat bubbles */
     .stChatMessage {{
         background: {chat_bg};
         border-radius: 12px;
@@ -55,18 +60,61 @@ def apply_chatgpt_style(dark=False):
         border: 1px solid {border};
     }}
 
+    /* NORMAL TEXT (FIXED) */
+    .stMarkdown,
+    .stMarkdown p,
+    .stMarkdown li,
+    .stMarkdown span,
+    .stMarkdown div {{
+        color: {text} !important;
+        font-size: 16px;
+        line-height: 1.65;
+    }}
+
+    /* Subtle text */
+    .stMarkdown em,
+    .stMarkdown blockquote {{
+        color: {subtext};
+    }}
+
+    /* Headings */
+    .stMarkdown h1,
+    .stMarkdown h2,
+    .stMarkdown h3,
+    .stMarkdown h4 {{
+        color: {text};
+        font-weight: 600;
+    }}
+
+    /* Code blocks */
     pre {{
         background: {code_bg} !important;
         color: {text} !important;
         border-radius: 10px;
         padding: 14px;
+        font-size: 14px;
+        border: 1px solid {border};
+        overflow-x: auto;
+    }}
+
+    code {{
+        background: {code_bg};
+        color: {text};
+        padding: 3px 6px;
+        border-radius: 6px;
+        font-size: 14px;
+    }}
+
+    /* Input box */
+    textarea, input {{
+        border-radius: 12px !important;
+        font-size: 16px;
+        background: {chat_bg};
+        color: {text};
         border: 1px solid {border};
     }}
 
-    textarea, input {{
-        border-radius: 12px !important;
-    }}
-
+    /* Sidebar */
     section[data-testid="stSidebar"] {{
         background: {chat_bg};
         border-right: 1px solid {border};
