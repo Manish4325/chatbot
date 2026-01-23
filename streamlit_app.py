@@ -1,4 +1,4 @@
-# 🚀 CHATGPT-LIKE GROQ + STREAMLIT CHATBOT (FINAL, STREAMLIT-CLOUD SAFE)
+# 🚀 CHATGPT-LIKE GROQ + STREAMLIT CHATBOT (FINAL COMPLETE VERSION)
 
 import streamlit as st
 from groq import Groq
@@ -13,7 +13,6 @@ import faiss
 
 # ================= CONFIG =================
 st.set_page_config(page_title="Chatbot", page_icon="💬", layout="wide")
-
 DATA_DIR = "chat_data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -21,12 +20,10 @@ os.makedirs(DATA_DIR, exist_ok=True)
 if "GROQ_API_KEY" not in st.secrets:
     st.error("❌ GROQ_API_KEY missing")
     st.stop()
-
 client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 
 # ================= STORAGE =================
-def user_file(user):
-    return f"{DATA_DIR}/{user.lower()}.json"
+def user_file(user): return f"{DATA_DIR}/{user.lower()}.json"
 
 def load_chats(user):
     if os.path.exists(user_file(user)):
@@ -36,19 +33,18 @@ def load_chats(user):
 def save_chats(user, chats):
     json.dump(chats, open(user_file(user), "w"), indent=2)
 
-# Normalize old chat format (important)
 def normalize_chats(chats):
-    normalized = {}
-    for title, data in chats.items():
-        if isinstance(data, list):
-            normalized[title] = {
+    fixed = {}
+    for k, v in chats.items():
+        if isinstance(v, list):
+            fixed[k] = {
                 "pinned": False,
                 "created": datetime.utcnow().isoformat(),
-                "messages": data
+                "messages": v
             }
         else:
-            normalized[title] = data
-    return normalized
+            fixed[k] = v
+    return fixed
 
 # ================= EMBEDDING =================
 def embed(text):
@@ -61,50 +57,43 @@ def embed(text):
 def extract_text(file):
     ext = file.name.split(".")[-1].lower()
 
-    try:
-        if ext == "pdf":
-            reader = PdfReader(file)
-            return " ".join(p.extract_text() or "" for p in reader.pages)
+    if ext == "pdf":
+        r = PdfReader(file)
+        return " ".join(p.extract_text() or "" for p in r.pages)
 
-        if ext == "docx":
-            doc = Document(file)
-            return " ".join(p.text for p in doc.paragraphs)
+    if ext == "docx":
+        d = Document(file)
+        return " ".join(p.text for p in d.paragraphs)
 
-        if ext == "csv":
-            return pd.read_csv(file).to_string()
+    if ext == "csv":
+        return pd.read_csv(file).to_string()
 
-        if ext in ["xlsx", "xls"]:
-            return pd.read_excel(file).to_string()
+    if ext in ["xlsx", "xls"]:
+        return pd.read_excel(file).to_string()
 
-        if ext == "html":
-            soup = BeautifulSoup(file.read(), "html.parser")
-            return soup.get_text()
+    if ext == "html":
+        return BeautifulSoup(file.read(), "html.parser").get_text()
 
-        if ext in ["py", "ipynb", "txt"]:
-            return file.read().decode("utf-8")
+    if ext in ["py", "ipynb", "txt"]:
+        return file.read().decode("utf-8")
 
-        # ✅ Image handling (NO OCR, natural behavior)
-        if ext in ["png", "jpg", "jpeg"]:
-            return "[Image uploaded but text could not be extracted]"
-
-    except Exception:
-        return ""
+    if ext in ["png", "jpg", "jpeg"]:
+        return "[IMAGE_UPLOADED]"
 
     return ""
 
 # ================= STYLE =================
-def apply_style(dark):
+def style(dark):
     bg = "#0f1117" if dark else "#ffffff"
     chat = "#1e1f24" if dark else "#f7f7f8"
     text = "#eaeaea" if dark else "#1f1f1f"
     code = "#0b0f14" if dark else "#f1f1f1"
-
     st.markdown(f"""
     <style>
     body,.stApp{{background:{bg};color:{text};}}
     .block-container{{max-width:900px;}}
     .stChatMessage{{background:{chat};border-radius:12px;padding:12px;margin-bottom:10px;}}
-    pre,code{{background:{code};border-radius:8px;font-size:14px;}}
+    pre,code{{background:{code};border-radius:8px;}}
     section[data-testid=stSidebar]{{background:{chat};}}
     </style>
     """, unsafe_allow_html=True)
@@ -115,21 +104,16 @@ if "user" not in st.session_state:
 
 if not st.session_state.user:
     st.title("💬 Chatbot")
-    st.caption("ChatGPT-style UI powered by Groq")
-
     u = st.text_input("Enter your name")
-    if st.button("Start Chat") and u:
+    if st.button("Login") and u:
         st.session_state.user = u
-        raw = load_chats(u)
-        st.session_state.chats = normalize_chats(raw)
+        st.session_state.chats = normalize_chats(load_chats(u))
         save_chats(u, st.session_state.chats)
-
         st.session_state.current = None
         st.session_state.dark = False
         st.session_state.faiss = None
         st.session_state.chunks = []
         st.rerun()
-
     st.stop()
 
 # ================= STATE =================
@@ -146,7 +130,7 @@ for k, v in {
 # ================= SIDEBAR =================
 with st.sidebar:
     st.subheader("💬 Chats")
-    search = st.text_input("🔍 Search chats")
+    search = st.text_input("🔍 Search")
 
     for title, meta in st.session_state.chats.items():
         if search.lower() in title.lower():
@@ -155,8 +139,14 @@ with st.sidebar:
                 st.session_state.current = title
                 st.rerun()
 
-    if st.button("➕ New Chat", use_container_width=True):
+    col1, col2 = st.columns(2)
+    if col1.button("➕ New"):
         st.session_state.current = None
+        st.rerun()
+    if col2.button("🗑 Delete") and st.session_state.current:
+        del st.session_state.chats[st.session_state.current]
+        st.session_state.current = None
+        save_chats(st.session_state.user, st.session_state.chats)
         st.rerun()
 
     st.divider()
@@ -169,21 +159,26 @@ with st.sidebar:
         accept_multiple_files=True
     )
 
-apply_style(st.session_state.dark)
+style(st.session_state.dark)
 
 # ================= FILE RAG =================
+image_uploaded = False
 if uploaded:
-    full_text = ""
+    text = ""
     for f in uploaded:
-        full_text += extract_text(f)
+        t = extract_text(f)
+        if t == "[IMAGE_UPLOADED]":
+            image_uploaded = True
+        else:
+            text += t
 
-    chunks = [full_text[i:i+500] for i in range(0, len(full_text), 500)]
-    vecs = np.array([embed(c) for c in chunks])
-    idx = faiss.IndexFlatL2(384)
-    idx.add(vecs)
-
-    st.session_state.faiss = idx
-    st.session_state.chunks = chunks
+    if text:
+        chunks = [text[i:i+500] for i in range(0, len(text), 500)]
+        vecs = np.array([embed(c) for c in chunks])
+        idx = faiss.IndexFlatL2(384)
+        idx.add(vecs)
+        st.session_state.faiss = idx
+        st.session_state.chunks = chunks
 
 # ================= CHAT DISPLAY =================
 if st.session_state.current:
@@ -195,7 +190,7 @@ if st.session_state.current:
 if prompt := st.chat_input("Ask anything..."):
 
     if not st.session_state.current:
-        title = prompt[:50] + ("..." if len(prompt) > 50 else "")
+        title = prompt[:40] + ("..." if len(prompt) > 40 else "")
         st.session_state.chats[title] = {
             "pinned": False,
             "created": datetime.utcnow().isoformat(),
@@ -203,8 +198,8 @@ if prompt := st.chat_input("Ask anything..."):
         }
         st.session_state.current = title
 
-    messages = st.session_state.chats[st.session_state.current]["messages"]
-    messages.append({"role": "user", "content": prompt})
+    msgs = st.session_state.chats[st.session_state.current]["messages"]
+    msgs.append({"role": "user", "content": prompt})
 
     code_rule = (
         "Include code." if allow_code or
@@ -212,15 +207,21 @@ if prompt := st.chat_input("Ask anything..."):
         else "Do NOT include code."
     )
 
-    # ✅ Natural system prompt
     system = (
         "You are a helpful, conversational assistant. "
-        "If an image is uploaded and its text is unavailable, "
-        "politely ask the user to describe the image instead of explaining technical limitations. "
+        "If the user uploaded an image and asks about it, "
+        "acknowledge the image and politely ask them to describe "
+        "the content or provide the question/options from the image. "
         + code_rule
     )
 
-    context = [{"role": "system", "content": system}] + messages[-6:]
+    context = [{"role": "system", "content": system}] + msgs[-6:]
+
+    if image_uploaded:
+        context.insert(1, {
+            "role": "system",
+            "content": "The user has uploaded an image. Image text is not available."
+        })
 
     if st.session_state.faiss:
         q = embed(prompt).reshape(1, -1)
@@ -241,5 +242,5 @@ if prompt := st.chat_input("Ask anything..."):
                 out += c.choices[0].delta.content
                 box.markdown(out)
 
-    messages.append({"role": "assistant", "content": out})
+    msgs.append({"role": "assistant", "content": out})
     save_chats(st.session_state.user, st.session_state.chats)
