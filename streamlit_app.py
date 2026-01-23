@@ -1,10 +1,10 @@
 # =========================================================
-# CHATGPT-LIKE GROQ + STREAMLIT CHATBOT (STABLE FINAL)
+# CHATGPT-LIKE GROQ + STREAMLIT CHATBOT (FINAL POLISHED)
 # =========================================================
 
 import streamlit as st
 from groq import Groq
-import json, csv, time
+import json, time
 from datetime import datetime
 from io import StringIO
 import numpy as np
@@ -20,20 +20,18 @@ st.set_page_config(
 
 DATA_FILE = "chat_store.json"
 
-# ================= UI STYLE =================
+# ================= STYLES =================
 def apply_chatgpt_style(dark=False):
     if dark:
         bg = "#0f1117"
         chat_bg = "#1e1f24"
         text = "#eaeaea"
-        subtext = "#c9c9c9"
         code_bg = "#0b0f14"
         border = "#2a2b30"
     else:
         bg = "#ffffff"
         chat_bg = "#f7f7f8"
         text = "#1f1f1f"
-        subtext = "#4a4a4a"
         code_bg = "#f1f1f1"
         border = "#dddddd"
 
@@ -57,35 +55,16 @@ def apply_chatgpt_style(dark=False):
         border: 1px solid {border};
     }}
 
-    .stMarkdown,
-    .stMarkdown p,
-    .stMarkdown li {{
-        color: {text} !important;
-        font-size: 16px;
-        line-height: 1.65;
-    }}
-
     pre {{
         background: {code_bg} !important;
         color: {text} !important;
         border-radius: 10px;
         padding: 14px;
         border: 1px solid {border};
-        overflow-x: auto;
-    }}
-
-    code {{
-        background: {code_bg};
-        color: {text};
-        padding: 3px 6px;
-        border-radius: 6px;
     }}
 
     textarea, input {{
         border-radius: 12px !important;
-        background: {chat_bg};
-        color: {text};
-        border: 1px solid {border};
     }}
 
     section[data-testid="stSidebar"] {{
@@ -142,6 +121,9 @@ if "chat_id" not in st.session_state:
 if "dark" not in st.session_state:
     st.session_state.dark = False
 
+if "allow_code" not in st.session_state:
+    st.session_state.allow_code = True
+
 apply_chatgpt_style(st.session_state.dark)
 
 # ================= SIDEBAR =================
@@ -149,22 +131,26 @@ with st.sidebar:
     st.subheader("💬 Chats")
 
     for cid, chat in data[user].items():
-        label = chat["title"]
-        if st.button(label, key=cid):
+        if st.button(chat["title"], key=cid):
             st.session_state.chat_id = cid
             st.rerun()
 
     if st.button("➕ New Chat"):
         cid = str(time.time())
-        data[user][cid] = {
-            "title": "New Chat",
-            "messages": []
-        }
+        data[user][cid] = {"title": "New Chat", "messages": []}
         save_data(data)
         st.session_state.chat_id = cid
         st.rerun()
 
+    if st.session_state.chat_id:
+        if st.button("🗑 Delete Chat"):
+            del data[user][st.session_state.chat_id]
+            save_data(data)
+            st.session_state.chat_id = None
+            st.rerun()
+
     st.divider()
+    st.session_state.allow_code = st.toggle("Allow Code", st.session_state.allow_code)
     st.session_state.dark = st.toggle("🌙 Dark Mode", st.session_state.dark)
 
 # ================= CHAT =================
@@ -178,14 +164,18 @@ for m in chat["messages"]:
     with st.chat_message(m["role"]):
         st.markdown(m["content"])
 
-# ================= FILE UPLOAD =================
-uploaded = st.file_uploader(
-    "Upload files",
-    type=["pdf", "csv", "txt", "py", "html", "ipynb"],
-    accept_multiple_files=True
-)
+# ================= ATTACH FILES (➕ ICON STYLE) =================
+with st.expander("➕ Attach files", expanded=False):
+    uploaded = st.file_uploader(
+        "Upload files",
+        type=["pdf", "csv", "txt", "py", "html", "ipynb"],
+        accept_multiple_files=True
+    )
 
 context_text = ""
+index = None
+chunks = []
+
 if uploaded:
     for f in uploaded:
         if f.type == "application/pdf":
@@ -199,9 +189,6 @@ if uploaded:
     vecs = np.array([embed(c) for c in chunks])
     index = faiss.IndexFlatL2(384)
     index.add(vecs)
-else:
-    index = None
-    chunks = []
 
 # ================= INPUT =================
 if prompt := st.chat_input("Ask anything..."):
@@ -210,7 +197,8 @@ if prompt := st.chat_input("Ask anything..."):
     if chat["title"] == "New Chat":
         chat["title"] = prompt[:40]
 
-    system = "You are a helpful ChatGPT-like assistant. Format answers clearly."
+    code_rule = "Include code." if st.session_state.allow_code else "Do NOT include code."
+    system = f"You are a helpful assistant. {code_rule}"
 
     messages = [{"role": "system", "content": system}]
 
