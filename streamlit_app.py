@@ -1,10 +1,10 @@
 # =========================================================
-# CHATGPT-LIKE GROQ + STREAMLIT (FINAL STABLE VERSION)
+# CHATGPT-LIKE GROQ + STREAMLIT (FINAL WITH INTENT CONTROL)
 # =========================================================
 
 import streamlit as st
 from groq import Groq
-import sqlite3, uuid
+import sqlite3, uuid, re
 from datetime import datetime
 from PyPDF2 import PdfReader
 
@@ -39,7 +39,7 @@ conn.commit()
 # ================= GROQ =================
 client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 
-# ================= STYLES =================
+# ================= STYLE =================
 def apply_style(dark=False):
     bg = "#0f1117" if dark else "#ffffff"
     chat = "#1e1f24" if dark else "#f7f7f8"
@@ -70,11 +70,9 @@ def apply_style(dark=False):
         animation: blink 1s infinite;
     }}
 
-    @keyframes blink {{
-        50% {{ opacity:0; }}
-    }}
+    @keyframes blink {{ 50% {{ opacity:0; }} }}
 
-    @media (max-width: 768px) {{
+    @media (max-width:768px) {{
         .block-container {{ padding:1rem; }}
     }}
     </style>
@@ -94,12 +92,45 @@ if not st.session_state.user:
 
 user = st.session_state.user
 
-# ================= SESSION STATE =================
+# ================= STATE =================
 st.session_state.setdefault("chat_id", None)
 st.session_state.setdefault("dark", False)
-st.session_state.setdefault("allow_code", True)
+st.session_state.setdefault("answer_mode", "Auto")
 
 apply_style(st.session_state.dark)
+
+# ================= INTENT DETECTION =================
+def detect_intent(prompt: str) -> str:
+    p = prompt.lower()
+    code_words = ["code", "program", "implement", "python", "java", "sql", "script"]
+    explain_words = ["explain", "what is", "define", "why", "how does"]
+
+    has_code = any(w in p for w in code_words)
+    has_explain = any(w in p for w in explain_words)
+
+    if has_code and has_explain:
+        return "BOTH"
+    if has_code:
+        return "CODE"
+    return "EXPLAIN"
+
+def system_prompt(intent: str) -> str:
+    if intent == "EXPLAIN":
+        return (
+            "Explain clearly in plain text.\n"
+            "DO NOT include code.\n"
+            "DO NOT include pseudocode.\n"
+        )
+    if intent == "CODE":
+        return (
+            "Write ONLY code.\n"
+            "NO explanation.\n"
+            "NO text outside the code block.\n"
+        )
+    return (
+        "First explain briefly in text.\n"
+        "Then provide clean code in ONE code block.\n"
+    )
 
 # ================= SIDEBAR =================
 with st.sidebar:
@@ -144,7 +175,11 @@ with st.sidebar:
             st.rerun()
 
     st.divider()
-    st.session_state.allow_code = st.toggle("Allow code", st.session_state.allow_code)
+    st.session_state.answer_mode = st.selectbox(
+        "Answer Mode",
+        ["Auto", "Explain Only", "Code Only", "Explain + Code"],
+        index=0
+    )
     st.session_state.dark = st.toggle("🌙 Dark mode", st.session_state.dark)
 
 # ================= CHAT =================
@@ -177,7 +212,7 @@ if uploads:
             for p in reader.pages:
                 context += p.extract_text() or ""
         elif f.type.startswith("image"):
-            context += "\n[Image uploaded – describe what you want me to analyze]"
+            context += "\n[Image uploaded – user will ask questions about it]"
         else:
             context += f.getvalue().decode(errors="ignore")
 
@@ -190,18 +225,17 @@ if prompt := st.chat_input("Ask anything..."):
     )
     conn.commit()
 
-    # ✅ SAFE title fetch (FIX)
+    # Get title safely
     row = cur.execute(
         "SELECT title FROM chats WHERE id=?",
         (st.session_state.chat_id,)
     ).fetchone()
-
     title = row[0] if row else "New Chat"
 
     if title == "New Chat":
         auto = client.chat.completions.create(
             model="llama-3.1-8b-instant",
-            messages=[{"role": "user", "content": f"Give a short title for: {prompt}"}]
+            messages=[{"role":"user","content":f"Give a short title for: {prompt}"}]
         ).choices[0].message.content[:40]
 
         cur.execute(
@@ -210,18 +244,28 @@ if prompt := st.chat_input("Ask anything..."):
         )
         conn.commit()
 
-    system = "Include code." if st.session_state.allow_code else "Do NOT include code."
+    # ===== INTENT RESOLUTION =====
+    if st.session_state.answer_mode == "Auto":
+        intent = detect_intent(prompt)
+    elif st.session_state.answer_mode == "Explain Only":
+        intent = "EXPLAIN"
+    elif st.session_state.answer_mode == "Code Only":
+        intent = "CODE"
+    else:
+        intent = "BOTH"
 
-    messages = [{"role": "system", "content": system}]
+    system = system_prompt(intent)
+
+    messages = [{"role":"system","content":system}]
     if context:
-        messages.append({"role": "system", "content": f"Context:\n{context}"})
+        messages.append({"role":"system","content":f"Context:\n{context}"})
 
     recent = cur.execute("""
         SELECT role, content FROM messages
         WHERE chat_id=? ORDER BY created DESC LIMIT 6
     """, (st.session_state.chat_id,)).fetchall()
 
-    messages.extend(reversed([{"role": r, "content": c} for r, c in recent]))
+    messages.extend(reversed([{"role":r,"content":c} for r,c in recent]))
 
     with st.chat_message("assistant"):
         box = st.empty()
