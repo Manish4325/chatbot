@@ -176,19 +176,23 @@ if uploads:
         else:
             context+=f.getvalue().decode(errors="ignore")
 
-# ---------------- VOICE INPUT ----------------
+# ---------------- VOICE INPUT (UPLOAD AUDIO) ----------------
 voice_text=""
-if VOICE_AVAILABLE:
-    audio=st.audio_input("🎤 Speak")
-    if audio:
-        r=sr.Recognizer()
-        with sr.AudioFile(io.BytesIO(audio.read())) as source:
-            audio_data=r.record(source)
-        try:
-            voice_text=r.recognize_google(audio_data)
-            st.success(f"You said: {voice_text}")
-        except:
-            st.error("Could not understand audio")
+
+audio_file = st.file_uploader(
+    "🎤 Upload Voice (wav/mp3)",
+    type=["wav","mp3"]
+)
+
+if audio_file and VOICE_AVAILABLE:
+    r = sr.Recognizer()
+    with sr.AudioFile(audio_file) as source:
+        audio_data = r.record(source)
+    try:
+        voice_text = r.recognize_google(audio_data)
+        st.success(f"You said: {voice_text}")
+    except:
+        st.error("Could not understand audio")
 
 # ---------------- INPUT ----------------
 prompt=st.chat_input("Ask anything...")
