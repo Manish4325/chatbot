@@ -1,15 +1,22 @@
 # =========================================================
-# CHATGPT-LIKE GROQ + STREAMLIT (FINAL STABLE BUILD)
+# CHATGPT-LIKE GROQ + STREAMLIT (ULTIMATE FINAL BUILD)
 # =========================================================
 
 import streamlit as st
 from groq import Groq
-import sqlite3, uuid
+import sqlite3, uuid, io
 from datetime import datetime
 from PyPDF2 import PdfReader
 
+# Optional voice
+try:
+    import speech_recognition as sr
+    VOICE_AVAILABLE = True
+except:
+    VOICE_AVAILABLE = False
+
 # ---------------- CONFIG ----------------
-st.set_page_config(page_title="Chatbot", page_icon="💬", layout="wide")
+st.set_page_config("Chatbot", "💬", layout="wide")
 
 # ---------------- DATABASE ----------------
 conn = sqlite3.connect("chat.db", check_same_thread=False)
@@ -35,7 +42,6 @@ content TEXT,
 created TEXT
 )
 """)
-
 conn.commit()
 
 # ---------------- GROQ ----------------
@@ -50,98 +56,74 @@ def apply_style(dark=False):
 
     st.markdown(f"""
     <style>
-    body, .stApp {{ background:{bg}; color:{text}; }}
-    .block-container {{ max-width:900px; padding-top:1.5rem; }}
-
-    .stChatMessage {{
-        background:{chat};
-        border-radius:12px;
-        padding:14px;
-        margin-bottom:12px;
-    }}
-
-    pre {{
-        background:{code}!important;
-        color:{text}!important;
-        padding:14px;
-        border-radius:10px;
-    }}
-
-    .typing::after {{
-        content:"▍";
-        animation: blink 1s infinite;
-    }}
-
-    @keyframes blink {{
-        50% {{ opacity:0; }}
-    }}
-
-    @media (max-width:768px) {{
-        .block-container {{ padding:1rem; }}
-    }}
+    body,.stApp{{background:{bg};color:{text};}}
+    .block-container{{max-width:900px;padding-top:1.5rem}}
+    .stChatMessage{{background:{chat};padding:14px;border-radius:12px;margin-bottom:10px}}
+    pre{{background:{code}!important;color:{text}!important;padding:14px;border-radius:10px}}
+    .typing::after{{content:"▍";animation:blink 1s infinite}}
+    @keyframes blink{{50%{{opacity:0}}}}
     </style>
     """, unsafe_allow_html=True)
 
 # ---------------- LOGIN ----------------
 if "user" not in st.session_state:
-    st.session_state.user = None
+    st.session_state.user=None
 
 if not st.session_state.user:
     st.title("💬 Chatbot")
-    name = st.text_input("Enter your name")
-    if st.button("Start Chat") and name:
-        st.session_state.user = name
+    name=st.text_input("Enter your name")
+    if st.button("Start") and name:
+        st.session_state.user=name
         st.rerun()
     st.stop()
 
-user = st.session_state.user
+user=st.session_state.user
 
 # ---------------- STATE ----------------
-st.session_state.setdefault("chat_id", None)
-st.session_state.setdefault("dark", False)
-st.session_state.setdefault("answer_mode", "Auto")
+st.session_state.setdefault("chat_id",None)
+st.session_state.setdefault("dark",False)
+st.session_state.setdefault("answer_mode","Auto")
 
 apply_style(st.session_state.dark)
 
 # ---------------- INTENT ----------------
 def detect_intent(p):
-    p = p.lower()
-    if any(x in p for x in ["code", "program", "implement", "python", "sql"]):
-        if any(x in p for x in ["explain", "what is", "how"]):
+    p=p.lower()
+    if any(x in p for x in ["code","program","implement","python","sql"]):
+        if any(x in p for x in ["explain","what","how"]):
             return "BOTH"
         return "CODE"
     return "EXPLAIN"
 
 def system_prompt(intent):
-    if intent == "EXPLAIN":
+    if intent=="EXPLAIN":
         return "Explain clearly. Do NOT include code."
-    if intent == "CODE":
+    if intent=="CODE":
         return "Return ONLY code. No explanation."
-    return "First explain briefly, then provide code."
+    return "Explain briefly then give one code block."
 
 # ---------------- SIDEBAR ----------------
 with st.sidebar:
     st.subheader("💬 Chats")
 
-    chats = cur.execute("""
+    chats=cur.execute("""
     SELECT id,title,pinned FROM chats
-    WHERE user=?
-    ORDER BY pinned DESC, created DESC
+    WHERE user=? ORDER BY pinned DESC,created DESC
     """,(user,)).fetchall()
 
     for cid,title,pin in chats:
-        label = "⭐ "+title if pin else title
+        label=("⭐ "+title) if pin else title
         if st.button(label,key=cid):
-            st.session_state.chat_id = cid
+            st.session_state.chat_id=cid
             st.rerun()
 
     if st.button("➕ New Chat"):
-        cid = str(uuid.uuid4())
+        cid=str(uuid.uuid4())
         cur.execute("""
         INSERT INTO chats VALUES (?,?,?,?,?,?)
         """,(cid,user,"New Chat","",0,datetime.utcnow().isoformat()))
         conn.commit()
-        st.session_state.chat_id = cid
+        st.session_state.chat_id=cid
         st.rerun()
 
     if st.session_state.chat_id:
@@ -151,7 +133,7 @@ with st.sidebar:
             conn.commit()
             st.rerun()
 
-        if st.button("🗑 Delete Chat"):
+        if st.button("🗑 Delete"):
             cur.execute("DELETE FROM chats WHERE id=?",(st.session_state.chat_id,))
             cur.execute("DELETE FROM messages WHERE chat_id=?",(st.session_state.chat_id,))
             conn.commit()
@@ -159,18 +141,18 @@ with st.sidebar:
             st.rerun()
 
     st.divider()
-    st.session_state.answer_mode = st.selectbox(
+    st.session_state.answer_mode=st.selectbox(
         "Answer Mode",
         ["Auto","Explain Only","Code Only","Explain + Code"]
     )
-    st.session_state.dark = st.toggle("🌙 Dark Mode",st.session_state.dark)
+    st.session_state.dark=st.toggle("🌙 Dark Mode",st.session_state.dark)
 
 # ---------------- CHAT ----------------
 if not st.session_state.chat_id:
     st.info("Create or select a chat")
     st.stop()
 
-history = cur.execute("""
+history=cur.execute("""
 SELECT role,content FROM messages
 WHERE chat_id=? ORDER BY created
 """,(st.session_state.chat_id,)).fetchall()
@@ -180,20 +162,41 @@ for r,c in history:
         st.markdown(c)
 
 # ---------------- FILE UPLOAD ----------------
-uploads = st.file_uploader("➕ Attach files",accept_multiple_files=True)
+uploads=st.file_uploader(
+    "➕ Attach files",
+    accept_multiple_files=True
+)
 
 context=""
 if uploads:
     for f in uploads:
         if f.type=="application/pdf":
-            reader=PdfReader(f)
-            for p in reader.pages:
+            for p in PdfReader(f).pages:
                 context+=p.extract_text() or ""
         else:
             context+=f.getvalue().decode(errors="ignore")
 
+# ---------------- VOICE INPUT ----------------
+voice_text=""
+if VOICE_AVAILABLE:
+    audio=st.audio_input("🎤 Speak")
+    if audio:
+        r=sr.Recognizer()
+        with sr.AudioFile(io.BytesIO(audio.read())) as source:
+            audio_data=r.record(source)
+        try:
+            voice_text=r.recognize_google(audio_data)
+            st.success(f"You said: {voice_text}")
+        except:
+            st.error("Could not understand audio")
+
 # ---------------- INPUT ----------------
-if prompt := st.chat_input("Ask anything..."):
+prompt=st.chat_input("Ask anything...")
+
+if voice_text and not prompt:
+    prompt=voice_text
+
+if prompt:
 
     cur.execute("""
     INSERT INTO messages VALUES (?,?,?,?,?)
@@ -201,12 +204,11 @@ if prompt := st.chat_input("Ask anything..."):
          "user",prompt,datetime.utcnow().isoformat()))
     conn.commit()
 
-    # Auto-title
     row=cur.execute("SELECT title FROM chats WHERE id=?",
                     (st.session_state.chat_id,)).fetchone()
 
     if row and row[0]=="New Chat":
-        title = client.chat.completions.create(
+        title=client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[{"role":"user","content":f"Give short title: {prompt}"}]
         ).choices[0].message.content[:40]
@@ -215,7 +217,6 @@ if prompt := st.chat_input("Ask anything..."):
                     (title,st.session_state.chat_id))
         conn.commit()
 
-    # Intent
     if st.session_state.answer_mode=="Auto":
         intent=detect_intent(prompt)
     elif st.session_state.answer_mode=="Explain Only":
@@ -240,13 +241,11 @@ if prompt := st.chat_input("Ask anything..."):
     with st.chat_message("assistant"):
         box=st.empty()
         out=""
-
         stream=client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=messages,
             stream=True
         )
-
         for chunk in stream:
             if chunk.choices[0].delta.content:
                 out+=chunk.choices[0].delta.content
@@ -258,3 +257,32 @@ if prompt := st.chat_input("Ask anything..."):
     """,(str(uuid.uuid4()),st.session_state.chat_id,
          "assistant",out,datetime.utcnow().isoformat()))
     conn.commit()
+
+# ---------------- EXPORT CHAT ----------------
+st.divider()
+if st.button("📤 Export Chat"):
+    rows=cur.execute("""
+    SELECT role,content FROM messages
+    WHERE chat_id=? ORDER BY created
+    """,(st.session_state.chat_id,)).fetchall()
+
+    text=""
+    for r,c in rows:
+        text+=f"{r.upper()}:\n{c}\n\n"
+
+    st.download_button(
+        "Download TXT",
+        text,
+        file_name="chat.txt"
+    )
+
+# =========================================================
+# DEPLOYMENT
+# Streamlit Cloud:
+# - Push to GitHub
+# - Add GROQ_API_KEY in Secrets
+#
+# Render:
+# Start Command:
+# streamlit run streamlit_app.py --server.port 10000 --server.address 0.0.0.0
+# =========================================================
