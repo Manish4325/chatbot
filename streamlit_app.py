@@ -266,10 +266,12 @@ if prompt:=st.chat_input("Ask anything"):
         except:
             st.error("Model temporarily unavailable")
 
-    cur.execute("INSERT INTO messages VALUES (?,?,?,?,?)",
-    (str(uuid.uuid4()),st.session_state.chat_id,
-     "assistant",out,datetime.utcnow().isoformat()))
-    conn.commit()
+    cur.execute(
+    "INSERT INTO chats VALUES (?,?,?,?,?,?)",
+    (cid, user, "New Chat", "", 0, datetime.utcnow().isoformat())
+)
+conn.commit()
+
 
     # ===== SUMMARY UPDATE =====
     all_text="\n".join([m[1] for m in history[::-1]])
