@@ -11,6 +11,11 @@ from PyPDF2 import PdfReader
 # ---------------- CONFIG ----------------
 st.set_page_config("Chatbot", "💬", layout="wide")
 
+# ---------------- SECRETS CHECK ----------------
+if "GROQ_API_KEY" not in st.secrets:
+    st.error("❌ GROQ_API_KEY missing in Streamlit secrets")
+    st.stop()
+
 # ---------------- DATABASE ----------------
 conn = sqlite3.connect("chat.db", check_same_thread=False)
 cur = conn.cursor()
@@ -208,7 +213,7 @@ if prompt := st.chat_input("Ask anything..."):
 
     if title=="New Chat":
         auto = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
+            model="llama3-70b-8192",
             messages=[{"role":"user","content":f"Short title: {prompt}"}]
         ).choices[0].message.content[:40]
 
@@ -242,11 +247,17 @@ if prompt := st.chat_input("Ask anything..."):
     with st.chat_message("assistant"):
         box = st.empty()
         out=""
-        stream = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=messages,
-            stream=True
-        )
+
+        try:
+            stream = client.chat.completions.create(
+                model="llama3-70b-8192",
+                messages=messages,
+                stream=True
+            )
+        except:
+            st.error("Groq API error. Check key or model.")
+            st.stop()
+
         for ch in stream:
             if ch.choices[0].delta.content:
                 out += ch.choices[0].delta.content
