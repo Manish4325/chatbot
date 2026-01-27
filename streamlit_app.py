@@ -15,19 +15,17 @@ st.set_page_config("Chatbot", "💬", layout="wide")
 conn = sqlite3.connect("chat.db", check_same_thread=False)
 cur = conn.cursor()
 
-# FOLDERS
 cur.execute("""
 CREATE TABLE IF NOT EXISTS folders(
-id TEXT,
+id TEXT PRIMARY KEY,
 user TEXT,
 name TEXT
 )
 """)
 
-# CHATS
 cur.execute("""
 CREATE TABLE IF NOT EXISTS chats(
-id TEXT,
+id TEXT PRIMARY KEY,
 user TEXT,
 title TEXT,
 pinned INTEGER,
@@ -36,16 +34,17 @@ folder_id TEXT
 )
 """)
 
-# MESSAGES
 cur.execute("""
 CREATE TABLE IF NOT EXISTS messages(
-id TEXT,
+id TEXT PRIMARY KEY,
 chat_id TEXT,
 role TEXT,
 content TEXT,
 created TEXT
 )
 """)
+
+conn.commit()
 
 # ---- AUTO MIGRATION (SAFE) ----
 try:
