@@ -1,10 +1,10 @@
 # ============================================================
-# CHATGPT-LIKE GROQ + STREAMLIT (ALL FEATURES MERGED FINAL)
+# CHATGPT-LIKE GROQ + STREAMLIT (STABLE FINAL BUILD)
 # ============================================================
 
 import streamlit as st
 from groq import Groq
-import sqlite3, uuid, os, base64, requests
+import sqlite3, uuid, requests, base64
 from datetime import datetime
 from PyPDF2 import PdfReader
 from PIL import Image
@@ -36,17 +36,24 @@ name TEXT)""")
 cur.execute("""CREATE TABLE IF NOT EXISTS chats(
 id TEXT PRIMARY KEY,
 user TEXT,
-folder_id TEXT,
 title TEXT,
 pinned INTEGER,
-created TEXT)""")
+created TEXT
+)""")
 
 cur.execute("""CREATE TABLE IF NOT EXISTS messages(
-id TEXT,
+id TEXT PRIMARY KEY,
 chat_id TEXT,
 role TEXT,
 content TEXT,
-created TEXT)""")
+created TEXT
+)""")
+
+# ---- MIGRATION ----
+try:
+    cur.execute("ALTER TABLE chats ADD COLUMN folder_id TEXT")
+except:
+    pass
 
 conn.commit()
 
@@ -85,10 +92,10 @@ if not st.session_state.user:
             st.session_state.user=u
             st.rerun()
         else:
-            st.error("Invalid")
+            st.error("Invalid credentials")
 
     if st.button("Register"):
-        cur.execute("INSERT INTO users VALUES (?,?)",(u,p))
+        cur.execute("INSERT OR IGNORE INTO users VALUES (?,?)",(u,p))
         conn.commit()
         st.success("Registered")
 
@@ -110,8 +117,12 @@ apply_style(st.session_state.dark)
 # ------------------------------------------------------------
 def detect_intent(p):
     p=p.lower()
-    if "code" in p or "python" in p: return "CODE"
-    if "explain" in p or "what is" in p: return "EXPLAIN"
+    if "code" in p or "python" in p:
+        if "explain" in p:
+            return "BOTH"
+        return "CODE"
+    if "explain" in p or "what is" in p:
+        return "EXPLAIN"
     return "BOTH"
 
 def system_prompt(intent):
@@ -136,11 +147,10 @@ with st.sidebar:
 
     st.divider()
 
-    # folders
     fname=st.text_input("New Folder")
     if st.button("Create Folder"):
         cur.execute("INSERT INTO folders VALUES (?,?,?)",
-                    (str(uuid.uuid4()),user,fname))
+            (str(uuid.uuid4()),user,fname))
         conn.commit()
         st.rerun()
 
@@ -148,7 +158,10 @@ with st.sidebar:
 
     for fid,name in folders:
         with st.expander(name):
-            chats=cur.execute("SELECT id,title FROM chats WHERE folder_id=?",(fid,)).fetchall()
+            chats=cur.execute(
+                "SELECT id,title FROM chats WHERE folder_id=?",(fid,)
+            ).fetchall()
+
             for cid,title in chats:
                 if st.button(title,key=cid):
                     st.session_state.chat_id=cid
@@ -156,14 +169,16 @@ with st.sidebar:
 
             if st.button("➕ New Chat",key=fid):
                 cid=str(uuid.uuid4())
-                cur.execute("INSERT INTO chats VALUES (?,?,?,?,?)",
-                    (cid,user,fid,"New Chat",0,datetime.utcnow()))
+                cur.execute(
+                    "INSERT INTO chats VALUES (?,?,?,?,?,?)",
+                    (cid,user,"New Chat",0,datetime.utcnow().isoformat(),fid)
+                )
                 conn.commit()
                 st.session_state.chat_id=cid
                 st.rerun()
 
 # ------------------------------------------------------------
-# CHAT DISPLAY
+# CHAT
 # ------------------------------------------------------------
 if not st.session_state.chat_id:
     st.info("Select or create a chat")
@@ -181,14 +196,16 @@ for r,c in history:
 # ------------------------------------------------------------
 # FILE UPLOAD
 # ------------------------------------------------------------
-uploads=st.file_uploader("➕",accept_multiple_files=True)
+uploads=st.file_uploader("➕ Attach Files",accept_multiple_files=True)
 
 def read_file(f):
     if f.type=="application/pdf":
-        t=""
-        r=PdfReader(f)
-        for p in r.pages: t+=p.extract_text() or ""
-        return t
+        text=""
+        for p in PdfReader(f).pages:
+            text+=p.extract_text() or ""
+        return text
+    if f.type.endswith("wordprocessingml.document"):
+        return docx2txt.process(f)
     if f.type=="text/csv":
         return f.getvalue().decode()
     if f.type.startswith("image"):
@@ -201,18 +218,15 @@ if uploads:
         context+=read_file(f)
 
 # ------------------------------------------------------------
-# WEB SEARCH
-# ------------------------------------------------------------
-def web_search(q):
-    return requests.get("https://duckduckgo.com/html/?q="+q).text[:3000]
-
-# ------------------------------------------------------------
 # INPUT
 # ------------------------------------------------------------
 if prompt:=st.chat_input("Ask anything..."):
 
-    cur.execute("INSERT INTO messages VALUES (?,?,?,?,?)",
-        (str(uuid.uuid4()),st.session_state.chat_id,"user",prompt,datetime.utcnow()))
+    cur.execute(
+        "INSERT INTO messages VALUES (?,?,?,?,?)",
+        (str(uuid.uuid4()),st.session_state.chat_id,
+         "user",prompt,datetime.utcnow().isoformat())
+    )
     conn.commit()
 
     if st.session_state.mode=="Auto":
@@ -224,11 +238,10 @@ if prompt:=st.chat_input("Ask anything..."):
     else:
         intent="BOTH"
 
-    system=system_prompt(intent)
+    msgs=[{"role":"system","content":system_prompt(intent)}]
 
-    msgs=[{"role":"system","content":system}]
     if context:
-        msgs.append({"role":"system","content":"Context:"+context})
+        msgs.append({"role":"system","content":"Context:\n"+context})
 
     msgs.append({"role":"user","content":prompt})
 
@@ -239,7 +252,8 @@ if prompt:=st.chat_input("Ask anything..."):
         stream=client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=msgs,
-            stream=True)
+            stream=True
+        )
 
         for ch in stream:
             if ch.choices[0].delta.content:
@@ -247,6 +261,9 @@ if prompt:=st.chat_input("Ask anything..."):
                 box.markdown(out+"<span class='typing'></span>",
                              unsafe_allow_html=True)
 
-    cur.execute("INSERT INTO messages VALUES (?,?,?,?,?)",
-        (str(uuid.uuid4()),st.session_state.chat_id,"assistant",out,datetime.utcnow()))
+    cur.execute(
+        "INSERT INTO messages VALUES (?,?,?,?,?)",
+        (str(uuid.uuid4()),st.session_state.chat_id,
+         "assistant",out,datetime.utcnow().isoformat())
+    )
     conn.commit()
