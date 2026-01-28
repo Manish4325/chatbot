@@ -212,10 +212,16 @@ if prompt := st.chat_input("Ask anything..."):
     """,(st.session_state.chat_id,)).fetchone()[0]
 
     if title=="New Chat":
-        auto = client.chat.completions.create(
-            model="llama3-8b-8192",
-            messages=[{"role":"user","content":f"Short title: {prompt}"}]
-        ).choices[0].message.content[:40]
+        try:
+            auto = client.chat.completions.create(
+                model="llama3-8b-8192",
+                messages=[
+                    {"role":"system","content":"Generate a short 3-4 word title."},
+                    {"role":"user","content":prompt}
+                ]
+            ).choices[0].message.content[:40]
+        except:
+            auto = prompt[:40]
 
         cur.execute("""
         UPDATE chats SET title=? WHERE id=?
@@ -250,7 +256,7 @@ if prompt := st.chat_input("Ask anything..."):
 
         try:
             stream = client.chat.completions.create(
-                model="llama3-70b-8192",
+                model="llama3-8b-8192",
                 messages=messages,
                 stream=True
             )
