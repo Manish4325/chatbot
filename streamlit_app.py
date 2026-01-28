@@ -213,7 +213,7 @@ if prompt := st.chat_input("Ask anything..."):
 
     if title=="New Chat":
         auto = client.chat.completions.create(
-            model="model="llama3-8b-8192",
+            model="llama3-8b-8192",
             messages=[{"role":"user","content":f"Short title: {prompt}"}]
         ).choices[0].message.content[:40]
 
