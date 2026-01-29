@@ -1,5 +1,5 @@
 # ============================================================
-# CHATGPT STYLE STREAMLIT + GROQ CHATBOT (FINAL STABLE BUILD)
+# CHATGPT STYLE STREAMLIT + GROQ CHATBOT (DEBUG SAFE VERSION)
 # ============================================================
 
 import streamlit as st
@@ -8,12 +8,13 @@ import sqlite3, uuid
 from datetime import datetime
 from PyPDF2 import PdfReader
 
-# ---------------- CONFIG ----------------
 st.set_page_config("Chatbot", "💬", layout="wide")
 
-# ---------------- SECRETS CHECK ----------------
+# ---------------- CHECK SECRET ----------------
+st.write("Groq key loaded:", st.secrets.get("GROQ_API_KEY","NONE")[:5])
+
 if "GROQ_API_KEY" not in st.secrets:
-    st.error("❌ GROQ_API_KEY missing in Streamlit secrets")
+    st.error("GROQ_API_KEY missing in secrets")
     st.stop()
 
 # ---------------- DATABASE ----------------
@@ -46,234 +47,109 @@ conn.commit()
 client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 
 # ---------------- STYLE ----------------
-def apply_style(dark=False):
-    bg = "#0f1117" if dark else "#ffffff"
-    chat = "#1e1f24" if dark else "#f7f7f8"
-    text = "#eaeaea" if dark else "#1f1f1f"
-    code = "#0b0f14" if dark else "#f1f1f1"
-
-    st.markdown(f"""
+def style():
+    st.markdown("""
     <style>
-    body,.stApp{{background:{bg};color:{text};}}
-    .block-container{{max-width:900px;padding-top:1rem;}}
-
-    .stChatMessage{{
-        background:{chat};
-        border-radius:12px;
-        padding:14px;
-        margin-bottom:10px;
-    }}
-
-    pre{{background:{code};padding:14px;border-radius:10px}}
-
-    .typing::after{{
-        content:"▍";
-        animation:blink 1s infinite;
-    }}
-
-    @keyframes blink{{50%{{opacity:0;}}}}
-
-    @media(max-width:768px){{
-        .block-container{{padding:0.5rem}}
-    }}
+    .block-container{max-width:900px}
+    .stChatMessage{padding:14px;border-radius:12px;background:#f7f7f8}
     </style>
-    """, unsafe_allow_html=True)
+    """,unsafe_allow_html=True)
+
+style()
 
 # ---------------- LOGIN ----------------
 if "user" not in st.session_state:
-    st.session_state.user = None
+    st.session_state.user=None
 
 if not st.session_state.user:
-    st.title("💬 Chatbot")
-    name = st.text_input("Enter your name")
-    if st.button("Start Chat") and name:
-        st.session_state.user = name
+    st.title("Chatbot")
+    name=st.text_input("Enter name")
+    if st.button("Start") and name:
+        st.session_state.user=name
         st.rerun()
     st.stop()
 
-user = st.session_state.user
-
-# ---------------- STATE ----------------
-st.session_state.setdefault("chat_id", None)
-st.session_state.setdefault("dark", False)
-st.session_state.setdefault("mode", "Auto")
-
-apply_style(st.session_state.dark)
-
-# ---------------- INTENT ----------------
-def detect_intent(p):
-    p = p.lower()
-    if any(w in p for w in ["code","program","script","python","java","sql"]):
-        if any(w in p for w in ["explain","what","how"]):
-            return "BOTH"
-        return "CODE"
-    return "EXPLAIN"
-
-def system_prompt(intent):
-    if intent=="CODE":
-        return "Write ONLY code. No explanation."
-    if intent=="EXPLAIN":
-        return "Explain clearly. No code."
-    return "Explain briefly then give code."
+user=st.session_state.user
+st.session_state.setdefault("chat_id",None)
 
 # ---------------- SIDEBAR ----------------
 with st.sidebar:
-    st.subheader("💬 Chats")
-
-    chats = cur.execute("""
-    SELECT id,title,pinned FROM chats
-    WHERE user=?
-    ORDER BY pinned DESC, created DESC
-    """,(user,)).fetchall()
-
-    for cid,title,pinned in chats:
-        label = f"⭐ {title}" if pinned else title
-        if st.button(label,key=cid):
-            st.session_state.chat_id = cid
-            st.rerun()
-
     if st.button("➕ New Chat"):
-        cid = str(uuid.uuid4())
-        cur.execute("""
-        INSERT INTO chats VALUES(?,?,?,?,?)
-        """,(cid,user,"New Chat",0,datetime.utcnow().isoformat()))
+        cid=str(uuid.uuid4())
+        cur.execute("INSERT INTO chats VALUES(?,?,?,?,?)",
+            (cid,user,"New Chat",0,datetime.utcnow().isoformat()))
         conn.commit()
-        st.session_state.chat_id = cid
+        st.session_state.chat_id=cid
         st.rerun()
 
-    if st.session_state.chat_id:
-        if st.button("⭐ Pin / Unpin"):
-            cur.execute("""
-            UPDATE chats SET pinned = 1 - pinned WHERE id=?
-            """,(st.session_state.chat_id,))
-            conn.commit()
-            st.rerun()
+    chats=cur.execute(
+        "SELECT id,title FROM chats WHERE user=? ORDER BY created DESC",
+        (user,)
+    ).fetchall()
 
-        if st.button("🗑 Delete"):
-            cur.execute("DELETE FROM chats WHERE id=?",(st.session_state.chat_id,))
-            cur.execute("DELETE FROM messages WHERE chat_id=?",(st.session_state.chat_id,))
-            conn.commit()
-            st.session_state.chat_id=None
+    for cid,title in chats:
+        if st.button(title,key=cid):
+            st.session_state.chat_id=cid
             st.rerun()
-
-    st.divider()
-    st.session_state.mode = st.selectbox(
-        "Answer Mode",
-        ["Auto","Explain Only","Code Only","Explain + Code"]
-    )
-    st.session_state.dark = st.toggle("🌙 Dark mode",st.session_state.dark)
 
 # ---------------- CHAT ----------------
 if not st.session_state.chat_id:
-    st.info("Select or create a chat")
+    st.info("Create or select a chat")
     st.stop()
 
-history = cur.execute("""
-SELECT role,content FROM messages
-WHERE chat_id=?
-ORDER BY created
-""",(st.session_state.chat_id,)).fetchall()
+history=cur.execute(
+    "SELECT role,content FROM messages WHERE chat_id=? ORDER BY created",
+    (st.session_state.chat_id,)
+).fetchall()
 
 for r,c in history:
     with st.chat_message(r):
         st.markdown(c)
 
 # ---------------- FILE UPLOAD ----------------
-uploads = st.file_uploader(
-    "Attach files",
-    type=["pdf","txt","csv","py","html","ipynb","png","jpg"],
-    accept_multiple_files=True
-)
-
-context = ""
-if uploads:
-    for f in uploads:
+files=st.file_uploader("Attach files",accept_multiple_files=True)
+context=""
+if files:
+    for f in files:
         if f.type=="application/pdf":
-            reader = PdfReader(f)
+            reader=PdfReader(f)
             for p in reader.pages:
-                context += p.extract_text() or ""
+                context+=p.extract_text() or ""
         else:
-            context += f.getvalue().decode(errors="ignore")
+            context+=f.getvalue().decode(errors="ignore")
 
 # ---------------- INPUT ----------------
-if prompt := st.chat_input("Ask anything..."):
+if prompt:=st.chat_input("Ask anything"):
 
-    cur.execute("""
-    INSERT INTO messages VALUES(?,?,?,?,?)
-    """,(str(uuid.uuid4()),
-        st.session_state.chat_id,
-        "user",
-        prompt,
-        datetime.utcnow().isoformat()))
+    cur.execute("INSERT INTO messages VALUES(?,?,?,?,?)",
+        (str(uuid.uuid4()),
+         st.session_state.chat_id,
+         "user",
+         prompt,
+         datetime.utcnow().isoformat()))
     conn.commit()
 
-    title = cur.execute("""
-    SELECT title FROM chats WHERE id=?
-    """,(st.session_state.chat_id,)).fetchone()[0]
-
-    if title=="New Chat":
-        try:
-            auto = client.chat.completions.create(
-                model="llama3-8b-8192",
-                messages=[
-                    {"role":"system","content":"Generate a short 3-4 word title."},
-                    {"role":"user","content":prompt}
-                ]
-            ).choices[0].message.content[:40]
-        except:
-            auto = prompt[:40]
-
-        cur.execute("""
-        UPDATE chats SET title=? WHERE id=?
-        """,(auto,st.session_state.chat_id))
-        conn.commit()
-
-    if st.session_state.mode=="Auto":
-        intent = detect_intent(prompt)
-    elif st.session_state.mode=="Explain Only":
-        intent="EXPLAIN"
-    elif st.session_state.mode=="Code Only":
-        intent="CODE"
-    else:
-        intent="BOTH"
-
-    messages=[{"role":"system","content":system_prompt(intent)}]
-
+    messages=[{"role":"user","content":prompt}]
     if context:
-        messages.append({"role":"system","content":f"Context:\n{context}"})
+        messages.insert(0,{"role":"system","content":f"Context:\n{context}"})
 
-    recent = cur.execute("""
-    SELECT role,content FROM messages
-    WHERE chat_id=?
-    ORDER BY created DESC LIMIT 6
-    """,(st.session_state.chat_id,)).fetchall()
-
-    messages.extend(reversed([{"role":r,"content":c} for r,c in recent]))
+    try:
+        resp=client.chat.completions.create(
+            model="llama3-8b-8192",
+            messages=messages
+        )
+        answer=resp.choices[0].message.content
+    except Exception as e:
+        st.error(f"Groq Error: {e}")
+        st.stop()
 
     with st.chat_message("assistant"):
-        box = st.empty()
-        out=""
+        st.markdown(answer)
 
-        try:
-            stream = client.chat.completions.create(
-                model="llama3-8b-8192",
-                messages=messages,
-                stream=True
-            )
-        except:
-            st.error("Groq API error. Check key or model.")
-            st.stop()
-
-        for ch in stream:
-            if ch.choices[0].delta.content:
-                out += ch.choices[0].delta.content
-                box.markdown(out+'<span class="typing"></span>',unsafe_allow_html=True)
-
-    cur.execute("""
-    INSERT INTO messages VALUES(?,?,?,?,?)
-    """,(str(uuid.uuid4()),
-        st.session_state.chat_id,
-        "assistant",
-        out,
-        datetime.utcnow().isoformat()))
+    cur.execute("INSERT INTO messages VALUES(?,?,?,?,?)",
+        (str(uuid.uuid4()),
+         st.session_state.chat_id,
+         "assistant",
+         answer,
+         datetime.utcnow().isoformat()))
     conn.commit()
