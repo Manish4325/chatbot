@@ -14,3 +14,4 @@ speechrecognition
 pydub
 docx2txt
 requests
+pytesseract
