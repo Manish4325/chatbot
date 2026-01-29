@@ -15,3 +15,5 @@ pydub
 docx2txt
 requests
 pytesseract
+sentence-transformers
+reportlab
