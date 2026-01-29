@@ -1,11 +1,20 @@
 # ============================================================
-# CHATGPT STYLE STREAMLIT + GROQ CHATBOT (FINAL STABLE)
+# CHATGPT STYLE STREAMLIT + GROQ CHATBOT (FINAL STABLE BUILD)
 # ============================================================
+
+import os, sqlite3
+
+# -------- ONE-TIME DATABASE RESET FIX ----------
+if not os.path.exists("db_initialized.flag"):
+    if os.path.exists("chat.db"):
+        os.remove("chat.db")
+    open("db_initialized.flag","w").close()
+
+# ------------------------------------------------
 
 import streamlit as st
 from groq import Groq
-import sqlite3, uuid
-from datetime import datetime
+import uuid
 from PyPDF2 import PdfReader
 from PIL import Image
 import pandas as pd
