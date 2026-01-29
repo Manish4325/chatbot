@@ -1,5 +1,5 @@
 # ============================================================
-# CHATGPT STYLE STREAMLIT + GROQ CHATBOT (STABLE FINAL)
+# CHATGPT STYLE STREAMLIT + GROQ CHATBOT (FINAL STABLE)
 # ============================================================
 
 import streamlit as st
