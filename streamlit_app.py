@@ -1,6 +1,10 @@
-# ============================================================
-# CHATGPT STYLE STREAMLIT + GROQ CHATBOT (ULTIMATE EDITION)
-# ============================================================
+# ============================================
+# CHATGPT STYLE STREAMLIT + GROQ CHATBOT
+# ============================================
+
+import os
+if os.path.exists("chat.db"):
+    os.remove("chat.db")
 
 import streamlit as st
 from groq import Groq
@@ -21,7 +25,6 @@ except:
 
 # ---------------- CONFIG ----------------
 st.set_page_config("Chatbot", "💬", layout="wide")
-
 MODEL = "llama-3.1-8b-instant"
 
 # ---------------- API KEY ----------------
@@ -35,18 +38,18 @@ client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 conn = sqlite3.connect("chat.db", check_same_thread=False)
 cur = conn.cursor()
 
-cur.execute("""CREATE TABLE IF NOT EXISTS users(
+cur.execute("""CREATE TABLE users(
 username TEXT PRIMARY KEY,
 password TEXT
 )""")
 
-cur.execute("""CREATE TABLE IF NOT EXISTS folders(
+cur.execute("""CREATE TABLE folders(
 id TEXT PRIMARY KEY,
 name TEXT,
 user TEXT
 )""")
 
-cur.execute("""CREATE TABLE IF NOT EXISTS chats(
+cur.execute("""CREATE TABLE chats(
 id TEXT PRIMARY KEY,
 folder_id TEXT,
 user TEXT,
@@ -54,7 +57,7 @@ title TEXT,
 created TEXT
 )""")
 
-cur.execute("""CREATE TABLE IF NOT EXISTS messages(
+cur.execute("""CREATE TABLE messages(
 id TEXT PRIMARY KEY,
 chat_id TEXT,
 role TEXT,
@@ -62,7 +65,7 @@ content TEXT,
 created TEXT
 )""")
 
-cur.execute("""CREATE TABLE IF NOT EXISTS memory(
+cur.execute("""CREATE TABLE memory(
 user TEXT,
 content TEXT
 )""")
@@ -82,66 +85,59 @@ def apply_style(dark):
     .block-container{{max-width:900px}}
     .stChatMessage{{background:{chat};padding:14px;border-radius:12px}}
     pre{{background:{code};padding:12px;border-radius:8px}}
-    .typing::after{{content:"▍";animation:blink 1s infinite}}
-    @keyframes blink{{50%{{opacity:0}}}}
     </style>
     """, unsafe_allow_html=True)
 
-# ---------------- AUTH ----------------
+# ---------------- LOGIN ----------------
 if "user" not in st.session_state:
-    st.session_state.user = None
+    st.session_state.user=None
 
 if not st.session_state.user:
     st.title("🔐 Login / Signup")
+    u=st.text_input("Username")
+    p=st.text_input("Password",type="password")
 
-    u = st.text_input("Username")
-    p = st.text_input("Password", type="password")
+    if st.button("Login"):
+        row=cur.execute(
+            "SELECT * FROM users WHERE username=? AND password=?",
+            (u,p)
+        ).fetchone()
 
-    col1,col2 = st.columns(2)
+        if row:
+            st.session_state.user=u
+            st.rerun()
+        else:
+            st.error("Invalid login")
 
-    with col1:
-        if st.button("Login"):
-            row = cur.execute(
-                "SELECT * FROM users WHERE username=? AND password=?",
-                (u,p)
-            ).fetchone()
-
-            if row:
-                st.session_state.user=u
-                st.rerun()
-            else:
-                st.error("Invalid login")
-
-    with col2:
-        if st.button("Signup"):
-            try:
-                cur.execute("INSERT INTO users VALUES(?,?)",(u,p))
-                conn.commit()
-                st.success("Account created")
-            except:
-                st.error("User exists")
-
+    if st.button("Signup"):
+        try:
+            cur.execute("INSERT INTO users VALUES(?,?)",(u,p))
+            conn.commit()
+            st.success("Account created")
+        except:
+            st.error("User exists")
     st.stop()
 
-user = st.session_state.user
+user=st.session_state.user
 
 # ---------------- STATE ----------------
 st.session_state.setdefault("chat_id",None)
 st.session_state.setdefault("dark",False)
-
 apply_style(st.session_state.dark)
 
 # ---------------- SIDEBAR ----------------
 with st.sidebar:
-    st.session_state.dark = st.toggle("🌙 Dark Mode",st.session_state.dark)
+    st.session_state.dark=st.toggle("🌙 Dark Mode")
 
     if st.button("➕ New Folder"):
         fid=str(uuid.uuid4())
-        cur.execute("INSERT INTO folders VALUES(?,?,?)",(fid,"My Chats",user))
+        cur.execute("INSERT INTO folders VALUES(?,?,?)",
+                    (fid,"My Chats",user))
         conn.commit()
 
-    folders = cur.execute(
-        "SELECT id,name FROM folders WHERE user=?",(user,)
+    folders=cur.execute(
+        "SELECT id,name FROM folders WHERE user=?",
+        (user,)
     ).fetchall()
 
     for fid,name in folders:
@@ -149,38 +145,27 @@ with st.sidebar:
 
         if st.button("➕ New Chat",key=fid):
             cid=str(uuid.uuid4())
-            cur.execute(
-                "INSERT INTO chats VALUES(?,?,?,?,?)",
-                (cid,fid,user,"New Chat",datetime.utcnow().isoformat())
-            )
+            cur.execute("INSERT INTO chats VALUES(?,?,?,?,?)",
+                        (cid,fid,user,"New Chat",
+                         datetime.utcnow().isoformat()))
             conn.commit()
             st.session_state.chat_id=cid
 
-        chats = cur.execute(
-            "SELECT id,title FROM chats WHERE folder_id=?",(fid,)
+        chats=cur.execute(
+            "SELECT id,title FROM chats WHERE folder_id=?",
+            (fid,)
         ).fetchall()
 
         for cid,title in chats:
             if st.button(title,key=cid):
                 st.session_state.chat_id=cid
 
-    if st.sidebar.button("⬇ Export Chat"):
-        if st.session_state.chat_id:
-            rows=cur.execute(
-                "SELECT role,content FROM messages WHERE chat_id=?",
-                (st.session_state.chat_id,)
-            ).fetchall()
-            txt=""
-            for r,c in rows:
-                txt+=f"{r.upper()}: {c}\n\n"
-            st.download_button("Download",txt,"chat.txt")
-
 # ---------------- CHAT ----------------
 if not st.session_state.chat_id:
     st.info("Create or select a chat")
     st.stop()
 
-history = cur.execute(
+history=cur.execute(
 "SELECT role,content FROM messages WHERE chat_id=? ORDER BY created",
 (st.session_state.chat_id,)
 ).fetchall()
@@ -190,9 +175,9 @@ for r,c in history:
         st.markdown(c)
 
 # ---------------- FILE UPLOAD ----------------
-uploads = st.file_uploader(
+uploads=st.file_uploader(
 "Upload files/images",
-type=["pdf","txt","csv","png","jpg","jpeg"],
+type=["pdf","txt","csv","png","jpg"],
 accept_multiple_files=True
 )
 
@@ -213,34 +198,10 @@ if uploads:
         else:
             context+=f.getvalue().decode(errors="ignore")
 
-# ---------------- WEB BROWSING ----------------
-url = st.text_input("🌐 Paste website URL (optional)")
-if url:
-    try:
-        r=requests.get(url,timeout=10)
-        context+=r.text[:6000]
-    except:
-        st.warning("Could not fetch site")
-
-# ---------------- VOICE INPUT ----------------
-voice=None
-audio=st.file_uploader("🎙 Upload voice",type=["wav","mp3"])
-if audio:
-    try:
-        r=sr.Recognizer()
-        with sr.AudioFile(audio) as src:
-            aud=r.record(src)
-            voice=r.recognize_google(aud)
-    except:
-        st.warning("Voice failed")
-
 # ---------------- INPUT ----------------
-prompt = st.chat_input("Ask anything...")
-if voice:
-    prompt=voice
+prompt=st.chat_input("Ask anything...")
 
 if prompt:
-
     cur.execute("INSERT INTO messages VALUES(?,?,?,?,?)",
                 (str(uuid.uuid4()),
                  st.session_state.chat_id,
@@ -249,24 +210,7 @@ if prompt:
                  datetime.utcnow().isoformat()))
     conn.commit()
 
-    # Save long term memory
-    cur.execute("INSERT INTO memory VALUES(?,?)",(user,prompt))
-    conn.commit()
-
-    memories = cur.execute(
-        "SELECT content FROM memory WHERE user=? ORDER BY rowid DESC LIMIT 5",
-        (user,)
-    ).fetchall()
-
     messages=[{"role":"system","content":"You are a helpful assistant."}]
-
-    if memories:
-        mem="\n".join([m[0] for m in memories])
-        messages.append({"role":"system","content":"User memory:\n"+mem})
-
-    if context:
-        messages.append({"role":"system","content":"Context:\n"+context})
-
     messages.extend([{"role":r,"content":c} for r,c in history[-6:]])
     messages.append({"role":"user","content":prompt})
 
@@ -284,7 +228,7 @@ if prompt:
             for chunk in stream:
                 if chunk.choices[0].delta.content:
                     out+=chunk.choices[0].delta.content
-                    box.markdown(out+"▍")
+                    box.markdown(out)
 
         except:
             out="Groq API error. Check key or model."
