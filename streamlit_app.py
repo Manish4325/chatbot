@@ -135,7 +135,7 @@ if prompt:=st.chat_input("Ask anything"):
 
     try:
         resp=client.chat.completions.create(
-            model="llama3-8b-8192",
+            model="llama-3.1-8b-instant",
             messages=messages
         )
         answer=resp.choices[0].message.content
