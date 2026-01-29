@@ -1,10 +1,6 @@
 # ============================================================
-# CHATGPT STYLE STREAMLIT + GROQ CHATBOT (PRO VERSION)
+# CHATGPT STYLE STREAMLIT + GROQ CHATBOT (STABLE FINAL)
 # ============================================================
-
-import os
-if os.path.exists("chat.db"):
-    os.remove("chat.db")
 
 import streamlit as st
 from groq import Groq
@@ -37,9 +33,30 @@ embedder = SentenceTransformer("all-MiniLM-L6-v2")
 conn = sqlite3.connect("chat.db", check_same_thread=False)
 cur = conn.cursor()
 
-cur.execute("CREATE TABLE users(username TEXT,password TEXT)")
-cur.execute("CREATE TABLE chats(id TEXT,user TEXT,title TEXT,pinned INTEGER)")
-cur.execute("CREATE TABLE messages(chat_id TEXT,role TEXT,content TEXT)")
+cur.execute("""
+CREATE TABLE IF NOT EXISTS users(
+username TEXT PRIMARY KEY,
+password TEXT
+)
+""")
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS chats(
+id TEXT PRIMARY KEY,
+user TEXT,
+title TEXT,
+pinned INTEGER
+)
+""")
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS messages(
+chat_id TEXT,
+role TEXT,
+content TEXT
+)
+""")
+
 conn.commit()
 
 # ---------------- STYLE ----------------
@@ -47,10 +64,12 @@ def style(dark):
     bg="#0f1117" if dark else "#ffffff"
     chat="#1e1f24" if dark else "#f7f7f8"
     text="#eaeaea" if dark else "#1f1f1f"
+
     st.markdown(f"""
     <style>
     body,.stApp{{background:{bg};color:{text}}}
     .stChatMessage{{background:{chat};padding:12px;border-radius:10px}}
+    pre{{background:#0b0f14;color:white;padding:12px;border-radius:8px}}
     </style>
     """,unsafe_allow_html=True)
 
@@ -60,21 +79,28 @@ if "user" not in st.session_state:
 
 if not st.session_state.user:
     st.title("🔐 Login / Signup")
+
     u=st.text_input("Username")
     p=st.text_input("Password",type="password")
 
     if st.button("Login"):
-        row=cur.execute("SELECT * FROM users WHERE username=? AND password=?",(u,p)).fetchone()
+        row=cur.execute(
+            "SELECT * FROM users WHERE username=? AND password=?",
+            (u,p)
+        ).fetchone()
         if row:
             st.session_state.user=u
             st.rerun()
         else:
-            st.error("Invalid")
+            st.error("Invalid login")
 
     if st.button("Signup"):
-        cur.execute("INSERT INTO users VALUES(?,?)",(u,p))
-        conn.commit()
-        st.success("Account created")
+        try:
+            cur.execute("INSERT INTO users VALUES(?,?)",(u,p))
+            conn.commit()
+            st.success("Account created")
+        except:
+            st.error("User exists")
     st.stop()
 
 user=st.session_state.user
@@ -107,16 +133,22 @@ with st.sidebar:
 
     if st.button("➕ New Chat"):
         cid=str(uuid.uuid4())
-        cur.execute("INSERT INTO chats VALUES(?,?,?,0)",(cid,user,"New Chat"))
+        cur.execute(
+            "INSERT INTO chats VALUES(?,?,0)",
+            (cid,user,"New Chat")
+        )
         conn.commit()
         st.session_state.chat_id=cid
 
     if st.session_state.chat_id:
         if st.button("📌 Pin / Unpin"):
-            cur.execute("UPDATE chats SET pinned=1-pinned WHERE id=?",(st.session_state.chat_id,))
+            cur.execute(
+                "UPDATE chats SET pinned=1-pinned WHERE id=?",
+                (st.session_state.chat_id,)
+            )
             conn.commit()
 
-        if st.button("🗑 Delete Chat"):
+        if st.button("🗑 Delete"):
             cur.execute("DELETE FROM chats WHERE id=?",(st.session_state.chat_id,))
             cur.execute("DELETE FROM messages WHERE chat_id=?",(st.session_state.chat_id,))
             conn.commit()
@@ -134,10 +166,8 @@ with st.sidebar:
             for r,t in rows:
                 c.drawString(40,y,f"{r}: {t[:90]}")
                 y-=20
-                if y<50:
-                    c.showPage()
-                    y=750
             c.save()
+
             with open("chat.pdf","rb") as f:
                 st.download_button("Download PDF",f,"chat.pdf")
 
@@ -155,9 +185,9 @@ for r,c in history:
     with st.chat_message(r):
         st.markdown(c)
 
-# ---------------- FILES ----------------
+# ---------------- FILE UPLOAD ----------------
 uploads=st.file_uploader(
-"Upload PDF / TXT / CSV / Images",
+"Upload files",
 type=["pdf","txt","csv","png","jpg"],
 accept_multiple_files=True
 )
@@ -169,41 +199,44 @@ if uploads:
         if f.type=="application/pdf":
             reader=PdfReader(f)
             for p in reader.pages:
-                text=p.extract_text() or ""
-                context+=text
-                st.session_state.texts.append(text)
-                st.session_state.vectors.append(embedder.encode(text))
+                txt=p.extract_text() or ""
+                context+=txt
+                st.session_state.texts.append(txt)
+                st.session_state.vectors.append(embedder.encode(txt))
         elif f.type.startswith("image"):
-            context+="[User uploaded image]"
+            context+="[Image uploaded]"
         else:
-            txt=f.getvalue().decode()
+            txt=f.getvalue().decode(errors="ignore")
             context+=txt
             st.session_state.texts.append(txt)
             st.session_state.vectors.append(embedder.encode(txt))
 
 # ---------------- VECTOR SEARCH ----------------
-def retrieve(query):
+def retrieve(q):
     if not st.session_state.vectors:
         return ""
-    qvec=embedder.encode(query)
-    index=faiss.IndexFlatL2(len(qvec))
+    qv=embedder.encode(q)
+    index=faiss.IndexFlatL2(len(qv))
     index.add(st.session_state.vectors)
-    _,i=index.search([qvec],1)
+    _,i=index.search([qv],1)
     return st.session_state.texts[i[0][0]]
 
 # ---------------- INPUT ----------------
 prompt=st.chat_input("Ask anything...")
 
 if prompt:
-    cur.execute("INSERT INTO messages VALUES(?,?,?)",
-                (st.session_state.chat_id,"user",prompt))
+
+    cur.execute(
+        "INSERT INTO messages VALUES(?,?,?)",
+        (st.session_state.chat_id,"user",prompt)
+    )
     conn.commit()
 
     context+=retrieve(prompt)
 
     messages=[
         {"role":"system","content":"You are helpful AI."},
-        {"role":"system","content":f"Context:\n{context}"},
+        {"role":"system","content":f"Context:\n{context}"}
     ]
 
     messages.extend([{"role":r,"content":c} for r,c in history[-6:]])
@@ -226,6 +259,8 @@ if prompt:
         except:
             out="Groq API error"
 
-    cur.execute("INSERT INTO messages VALUES(?,?,?)",
-                (st.session_state.chat_id,"assistant",out))
+    cur.execute(
+        "INSERT INTO messages VALUES(?,?,?)",
+        (st.session_state.chat_id,"assistant",out)
+    )
     conn.commit()
